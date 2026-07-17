@@ -1,6 +1,8 @@
 # 🔬 Oral Insulin: Risk-Adjusted Net Present Value (rNPV) Engine
 **A dynamic, institutional-grade valuation model featuring Monte Carlo simulations, clinical stage-gate de-risking, and empirical proxy data for early-stage metabolic assets.**
 
+Web Version: https://oral-insulin-valuation-jertplxv7tgdwjvpod2nmb.streamlit.app/
+
 ## Overview
 This repository contains a full-scale pharmaceutical valuation engine built in Python and Streamlit. The model evaluates the Risk-Adjusted Net Present Value (rNPV) of a pre-clinical/Phase 1 oral insulin asset targeted at the Type 2 Diabetes (T2D) market. 
 
