@@ -16,15 +16,15 @@ The patient funnel is grounded in micro-simulation analyses of global insulin de
 * This establishes a Base Case access rate of 7.43% (38 million accessing / 511 million total).
 * The Bull Case access rate is established at 15.49% (79.2 million needed / 511 million total).
 * The total global vial volume required for 2030 is projected at 633.7 million.
-* Source: Basu S, Yudkin J, Kehlenbrink S et al., Estimation of global insulin use for type 2 diabetes, 2018–30: a microsimulation analysis, The Lancet Diabetes & Endocrinology, 2018[cite: 1].
+* Source: Basu S, Yudkin J, Kehlenbrink S et al., Estimation of global insulin use for type 2 diabetes, 2018–30: a microsimulation analysis, The Lancet Diabetes & Endocrinology, 2018.
 
 ---
 
 ## 📈 2. Market Capture (LRx Proxy Dynamics)
 Since oral insulin is an emerging modality, market capture rates are proxied using historical adoption curves of insulin analogs and oral GLP-1s.
-* **Bear Case (8%):** Based on the absolute ceiling of adoption rates historically seen for insulin analogs. Sourced from IQVIA's report on insulin market dynamics[cite: 1].
-* **Base Case (15%):** Anchored between the 14% GLP-1 market share captured by Rybelsus (PharmaVoice) and the 16.4% oral revenue capture reported in Novo Nordisk's 2023 SEC Annual Results[cite: 1].
-* **Bull Case (33%):** Based on IQVIA data demonstrating that Oral Wegovy captured one-third of all new GLP-1 New-to-Brand market demand within just 8 weeks of launch[cite: 1].
+* **Bear Case (8%):** Based on the absolute ceiling of adoption rates historically seen for insulin analogs. Sourced from IQVIA's report on insulin market dynamics.
+* **Base Case (15%):** Anchored between the 14% GLP-1 market share captured by Rybelsus (PharmaVoice) and the 16.4% oral revenue capture reported in Novo Nordisk's 2023 SEC Annual Results.
+* **Bull Case (33%):** Based on IQVIA data demonstrating that Oral Wegovy captured one-third of all new GLP-1 New-to-Brand market demand within just 8 weeks of launch.
 
 ---
 
@@ -34,8 +34,8 @@ Pricing assumptions balance the standard of care with mathematically justified o
 **Wholesale Acquisition Cost (WAC):**
 * The baseline injectable WAC for Lantus is set at $3,628 per year, sourced from a Value in Health publication.
 * **Base Case WAC ($4,789/year):** Utilizes a 1.32x premium over Lantus, justified purely by the convenience of oral delivery.
-* **Bull Case WAC ($5,445/year):** Utilizes a 1.5x premium, modeling a scenario where clinical trials prove a statistically significant reduction in hypoglycemic events[cite: 1].
-* Source: Premium multiplier calculations are derived from Mixed Logic Model results published in Dove Press regarding patient preferences for T2D medications[cite: 1].
+* **Bull Case WAC ($5,445/year):** Utilizes a 1.5x premium, modeling a scenario where clinical trials prove a statistically significant reduction in hypoglycemic events.
+* Source: Premium multiplier calculations are derived from Mixed Logic Model results published in Dove Press regarding patient preferences for T2D medications.
 
 **Cost of Goods Sold (COGS) & Price-to-Stockist (PTS):**
 Manufacturing costs are proxied using the launch-time Maximum Retail Price (MRP) of Rybelsus in India to simulate outsourced API production.
