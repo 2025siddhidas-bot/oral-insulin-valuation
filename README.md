@@ -4,7 +4,7 @@
 ## Overview
 This repository contains a full-scale pharmaceutical valuation engine built in Python and Streamlit. The model evaluates the Risk-Adjusted Net Present Value (rNPV) of a pre-clinical/Phase 1 oral insulin asset targeted at the Type 2 Diabetes (T2D) market. 
 
-To avoid the "false precision" of complex multi-national tax accounting for early-stage assets, the model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. This isolates the valuation to the core commercial economics and clinical viability of the drug.
+The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. This isolates the valuation to the core commercial economics and clinical viability of the drug.
 
 ---
 
