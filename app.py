@@ -38,7 +38,6 @@ p3_yrs = st.sidebar.number_input("Phase 3 Duration (Years)", value=3.0, step=0.5
 p3_cost = st.sidebar.number_input("Phase 3 Total Cost ($M)", value=120.0, step=1.0) * 1e6
 
 # --- 3. VALUATION ENGINE (BACKEND LOGIC) ---
-# Constants
 YEARS = 20
 INITIAL_POPULATION = 38000000
 POP_CAGR = 0.01
@@ -46,26 +45,35 @@ WACC = 0.11
 POST_LOE_RETENTION = 0.15
 UPTAKE_CURVE = [0.05, 0.15, 0.35, 0.55, 0.75, 0.90, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
-def calculate_rnpv(wac, gtn, share, ptrs, patent_years):
+def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
     net_price = wac * (1 - gtn)
     cogs_margin = min(pts_usd / net_price, 0.99) if net_price > 0 else 0.99
     
     total_rnpv = 0
     current_year = 1
+    logs = []
     
-    # 1. Deduct R&D Burn (Pushes commercial launch back dynamically)
+    # 1. Deduct R&D Burn
+    if return_logs:
+        logs.append("[1] Processing Clinical Trial Pipeline Cash Flows...")
+        
     phases = [(p1_yrs, p1_cost), (p2_yrs, p2_cost), (p3_yrs, p3_cost)]
     for duration, cost in phases:
         if duration > 0:
             annual_cost = cost / duration
-            # Discounting annual burn evenly over the duration of the phase
             for _ in range(int(np.ceil(duration))):
-                total_rnpv -= annual_cost / ((1 + WACC)**current_year)
+                discounted_burn = annual_cost / ((1 + WACC)**current_year)
+                total_rnpv -= discounted_burn
+                if return_logs:
+                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_cost/1e6:5.1f}M | rNPV Impact: ${-discounted_burn/1e6:7.2f}M")
                 current_year += 1
                 
     launch_year_offset = current_year
     
     # 2. Commercial Launch Cash Flows
+    if return_logs:
+        logs.append(f"\n[2] Processing {YEARS}-Year Commercialization Window (LOE Cliff at Yr {patent_years})...")
+        
     current_pop = INITIAL_POPULATION
     for yr in range(1, YEARS + 1):
         current_pop *= (1 + POP_CAGR)
@@ -79,32 +87,50 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years):
         rnpv_yr = (cash_flow / discount_factor) * ptrs
         total_rnpv += rnpv_yr
         
+        # Log specific milestone years for the terminal output
+        if return_logs and (yr in [1, 5, 10, patent_years, 15, YEARS]):
+            cliff_note = " <--- [GENERIC CLIFF EXECUTED]" if yr == patent_years else ""
+            rev_str = f"${gross_revenue/1e9:.2f}B" if gross_revenue >= 1e9 else f"${gross_revenue/1e6:.2f}M"
+            logs.append(f"  Com. Yr {yr:02d} | Net Revenue: {rev_str:>7} | rNPV: ${rnpv_yr/1e6:7.2f}M{cliff_note}")
+            
+    if return_logs:
+        return total_rnpv, "\n".join(logs)
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-# Grounded in the proxy data definitions
-bear_rnpv = calculate_rnpv(3628, 0.65, 0.08, POS, patent_life_years)
-base_rnpv = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years)
-bull_rnpv = calculate_rnpv(5445, 0.40, 0.33, POS, patent_life_years)
+# Grounded in the proxy data definitions. return_logs=True pulls the terminal text.
+bear_rnpv, bear_logs = calculate_rnpv(3628, 0.65, 0.08, POS, patent_life_years, return_logs=True)
+base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, return_logs=True)
+bull_rnpv, bull_logs = calculate_rnpv(5445, 0.40, 0.33, POS, patent_life_years, return_logs=True)
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
 col_bear.metric("📉 Bear Case (8% Share, 65% GTN, Lantus Parity WAC)", f"${bear_rnpv / 1e9:.2f} B")
 col_base.metric("🎯 Base Case (Current Interactive Inputs)", f"${base_rnpv / 1e9:.2f} B")
 col_bull.metric("🚀 Bull Case (33% Share, 40% GTN, 1.5x Premium WAC)", f"${bull_rnpv / 1e9:.2f} B")
+
+# Expandable Terminal Logs
+with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
+    col_log1, col_log2, col_log3 = st.columns(3)
+    with col_log1:
+        st.code(f"--- RUNNING VALUATION SCENARIO: BEAR ---\n\n{bear_logs}\n\n{'-'*45}\nFINAL BEAR ASSET rNPV: ${bear_rnpv/1e9:.3f} BILLION")
+    with col_log2:
+        st.code(f"--- RUNNING VALUATION SCENARIO: BASE ---\n\n{base_logs}\n\n{'-'*45}\nFINAL BASE ASSET rNPV: ${base_rnpv/1e9:.3f} BILLION")
+    with col_log3:
+        st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION")
+
 st.divider()
 
 # --- 5. MONTE CARLO & TORNADO CHARTS ---
 col1, col2 = st.columns(2)
 
-# Run 10k Iterations
+# Run 10k Iterations (Notice return_logs=False is the default, so it just gets the number)
 ITERATIONS = 10000
 sim_wac = np.random.triangular(3628, target_wac, 5445, ITERATIONS)
 sim_gtn = np.random.triangular(0.40, gtn_rebate, 0.65, ITERATIONS)
 sim_share = np.random.triangular(0.08, peak_market_share, 0.33, ITERATIONS)
 sim_ptrs = np.random.triangular(0.182, POS, 0.210, ITERATIONS)
 
-# Vectorized simulation
 sim_rnpv = np.zeros(ITERATIONS)
 for i in range(ITERATIONS):
     sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_share[i], sim_ptrs[i], patent_life_years)
