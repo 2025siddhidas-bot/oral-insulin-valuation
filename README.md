@@ -12,17 +12,17 @@ The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. Th
 
 The valuation engine is built on a standard Risk-Adjusted Net Present Value (rNPV) architecture. It separates the timeline into two distinct phases: Pre-Launch R&D Cash Outflows and Post-Launch Commercial Cash Inflows.
 
-### 1. Master rNPV Equation
+### 1. rNPV Equation
 The total asset value is calculated by discounting all future cash flows by the Weighted Average Cost of Capital (WACC) and adjusting for the clinical Probability of Success (POS):
 
 $$rNPV=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS+\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{CF_t}{(1+WACC)^t}\times POS$$
 
-### 2. Phase 1: R&D Cash Outflows
+### 1.1. R&D Cash Outflows
 Pre-launch capital burn is distributed across the specified duration of each clinical phase (Phase 1, Phase 2, Phase 3). These outflows are discounted back to Year 0:
 
 $$PV_{\text{RandD}}=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS$$
 
-### 3. Phase 2: Commercial Cash Inflows
+### 1.2. Commercial Cash Inflows
 Once launched, the 20-year commercial window calculates net cash flow ($CF_t$) based on epidemiology scaling, target market capture, net pricing (WAC minus GTN), COGS, and the generic cliff ($\delta_t$):
 
 $$PV_{Com}=\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{Patients_t\times NetPrice\times(1-COGS\%) \times\delta_t}{(1+WACC)^t}\times POS$$
