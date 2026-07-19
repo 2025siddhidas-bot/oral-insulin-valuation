@@ -258,8 +258,12 @@ def print_valuation(df, active_scenario="Base", use_bull_clinical_need=False):
             cliff_marker = " <-- [GENERIC CLIFF EXECUTED]" if yr == patent_life_years + 1 else ""
             print(f"    Com. Yr {yr:02d} | Net Revenue: ${total_revenue / 1e9:5.2f}B | rNPV: ${rnpv_yr / 1e6:7.2f}M{cliff_marker}")
 
+    # Calculate un-risked NPV by removing the POS multiplier
+    unrisked_npv = total_rnpv / POS
+
     print("\n" + "-" * 55)
-    print(f"  FINAL {active_scenario.upper()} ASSET rNPV: ${total_rnpv / 1e9:.3f} BILLION")
+    print(f"  FINAL {active_scenario.upper()} ASSET rNPV:     ${total_rnpv / 1e9:7.3f} BILLION")
+    print(f"  UN-RISKED COMMERCIAL NPV: ${unrisked_npv / 1e9:7.3f} BILLION")
     print("-" * 55)
     return total_rnpv
 

@@ -13,8 +13,8 @@ st.sidebar.header("1. Commercial Parameters")
 target_wac = st.sidebar.slider("Base US WAC Price ($)", min_value=3628, max_value=6000, value=4789, step=10)
 # REVISED: GTN slider defaults to 75% based on Milliman insulin data
 gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=75, step=1) / 100
-# REVISED: Share slider defaults to 15%, max 30% based on Gabelli oral GLP-1 data
-peak_market_share = st.sidebar.slider("Peak Global Share (%)", min_value=5, max_value=30, value=15, step=1) / 100
+# REVISED: Share slider defaults to 15%, max 20% based on Gabelli oral GLP-1 data
+peak_market_share = st.sidebar.slider("Peak Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
 
 st.sidebar.header("2. Intellectual Property")
 patent_life_years = st.sidebar.slider("Years of Exclusivity", min_value=8, max_value=15, value=12, step=1)
@@ -61,7 +61,7 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
     current_year = 1
     logs = []
     
-    # 1. Deduct R&D Burn
+    # 1. Deduct R&D Burn (FIXED: Added POS risk-adjustment to R&D)
     if return_logs:
         logs.append("[1] Processing Clinical Trial Pipeline Cash Flows...")
         
@@ -71,9 +71,11 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
             annual_cost = cost / duration
             for _ in range(int(np.ceil(duration))):
                 discounted_burn = annual_cost / ((1 + WACC)**current_year)
-                total_rnpv -= discounted_burn
+                # Risk-adjust the R&D cost
+                rnpv_burn = discounted_burn * ptrs
+                total_rnpv -= rnpv_burn
                 if return_logs:
-                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_cost/1e6:5.1f}M | rNPV Impact: ${-discounted_burn/1e6:7.2f}M")
+                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_cost/1e6:5.1f}M | rNPV Impact: ${-rnpv_burn/1e6:7.2f}M")
                 current_year += 1
                 
     launch_year_offset = current_year
@@ -124,19 +126,28 @@ bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 0.20, POS, patent_life_years, 
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
-col_bear.metric("📉 Bear Case (8% Share, 85% GTN, Lantus Parity)", f"${bear_rnpv / 1e9:.2f} B")
-col_base.metric("🎯 Base Case (Current Interactive Inputs)", f"${base_rnpv / 1e9:.2f} B")
-col_bull.metric("🚀 Bull Case (20% Share, 60% GTN, Premium WAC)", f"${bull_rnpv / 1e9:.2f} B")
+
+with col_bear:
+    st.metric("📉 Bear Case (8% Share, 85% GTN)", f"${bear_rnpv / 1e9:.2f} B")
+    st.caption(f"Un-risked Commercial NPV: **${(bear_rnpv / POS) / 1e9:.2f} B**")
+
+with col_base:
+    st.metric("🎯 Base Case (Current Inputs)", f"${base_rnpv / 1e9:.2f} B")
+    st.caption(f"Un-risked Commercial NPV: **${(base_rnpv / POS) / 1e9:.2f} B**")
+
+with col_bull:
+    st.metric("🚀 Bull Case (20% Share, 60% GTN)", f"${bull_rnpv / 1e9:.2f} B")
+    st.caption(f"Un-risked Commercial NPV: **${(bull_rnpv / POS) / 1e9:.2f} B**")
 
 # Expandable Terminal Logs
 with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
     col_log1, col_log2, col_log3 = st.columns(3)
     with col_log1:
-        st.code(f"--- RUNNING VALUATION SCENARIO: BEAR ---\n\n{bear_logs}\n\n{'-'*45}\nFINAL BEAR ASSET rNPV: ${bear_rnpv/1e9:.3f} BILLION")
+        st.code(f"--- RUNNING VALUATION SCENARIO: BEAR ---\n\n{bear_logs}\n\n{'-'*45}\nFINAL BEAR ASSET rNPV: ${bear_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(bear_rnpv/POS)/1e9:.3f} BILLION")
     with col_log2:
-        st.code(f"--- RUNNING VALUATION SCENARIO: BASE ---\n\n{base_logs}\n\n{'-'*45}\nFINAL BASE ASSET rNPV: ${base_rnpv/1e9:.3f} BILLION")
+        st.code(f"--- RUNNING VALUATION SCENARIO: BASE ---\n\n{base_logs}\n\n{'-'*45}\nFINAL BASE ASSET rNPV: ${base_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(base_rnpv/POS)/1e9:.3f} BILLION")
     with col_log3:
-        st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION")
+        st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(bull_rnpv/POS)/1e9:.3f} BILLION")
 
 st.divider()
 
