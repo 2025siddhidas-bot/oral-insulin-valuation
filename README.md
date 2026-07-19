@@ -25,7 +25,7 @@ $$PV_{\text{RandD}}=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS$
 ### 1.2. Commercial Cash Inflows
 Once launched, the 20-year commercial window calculates net cash flow ($CF_t$) based on epidemiology scaling, target market capture, net pricing (WAC minus GTN), COGS, and the generic cliff ($\delta_t$):
 
-$$PV_{Com}=\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{Patients_t\times NetPrice\times(1-COGS\%) \times ($\delta_t$)}{(1+WACC)^t}\times POS$$
+$$PV_{Com}=\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{Patients_t\times NetPrice\times(1-COGS)\times\delta_t}{(1+WACC)^t}\times POS$$
 
 ---
 ---
