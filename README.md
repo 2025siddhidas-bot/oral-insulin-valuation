@@ -12,6 +12,10 @@ The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. Th
 
 The valuation engine is built on a standard Risk-Adjusted Net Present Value (rNPV) architecture. It separates the timeline into two distinct phases: Pre-Launch R&D Cash Outflows and Post-Launch Commercial Cash Inflows.
 
+Recent Update: The model bifurcates global patient data into two distinct economic markets to account for the massive pricing delta between the US and the Rest of World (ROW).
+*   **US Market:** Modeled using higher WAC pricing offset by heavy Pharmacy Benefit Manager (PBM) rebate requirements (GTN).
+*   **ROW Market:** Modeled using a 90% list price discount to reflect international, state-negotiated pricing mechanisms.
+
 ### 1. rNPV Equation
 The total asset value is calculated by discounting all future cash flows by the Weighted Average Cost of Capital (WACC) and adjusting for the clinical Probability of Success (POS):
 
@@ -46,7 +50,7 @@ The patient funnel is grounded in micro-simulation analyses of global insulin de
 Since oral insulin is an emerging modality, market capture rates are proxied using historical adoption curves of insulin analogs and oral GLP-1s.
 * **Bear Case (8%):** Based on the absolute ceiling of adoption rates historically seen for insulin analogs. Sourced from IQVIA's report on insulin market dynamics.
 * **Base Case (15%):** Anchored between the 14% GLP-1 market share captured by Rybelsus (PharmaVoice) and the 16.4% oral revenue capture reported in Novo Nordisk's 2023 SEC Annual Results.
-* **Bull Case (33%):** Based on IQVIA data demonstrating that Oral Wegovy captured one-third of all new GLP-1 New-to-Brand market demand within just 8 weeks of launch.
+* **Bull Case (20%):** Peak adoption is capped at 20% to reflect the competitive dynamics of oral GLP-1 and insulin transitions.
 
 ---
 
@@ -69,8 +73,8 @@ Manufacturing costs are proxied using the launch-time Maximum Retail Price (MRP)
 * The modeled Bull COGS is 14.82% (calculated as $2.21 PTS / $14.91 WAC).
 
 **Gross-to-Net (GTN) Rebate:**
-* Modeled at a 50% baseline discount (Levy et al., 2018 average VAFSS discount of 48.3% rounded for metabolic markets). 
-* Monte Carlo boundaries are set at a 40% floor (IQVIA insulin discount data) and a 65% ceiling (Optum Rx Medicare Part D historical demands).
+* Modeled at a 75% baseline discount (Levy et al., 2018 average VAFSS discount of 48.3% rounded for metabolic markets and Milliman analysis of insulin cost structures). 
+* Monte Carlo boundaries are set at a 85% (Bear) and 60% (Bull) (40% is the absolute floor (IQVIA insulin discount data)).
 
 ---
 
@@ -93,7 +97,7 @@ The model abandons static, taxonomy-based risk averages in favor of longitudinal
 To eliminate the unreliability of single-point estimates, the engine utilizes `numpy` and `matplotlib` to run a 10,000-iteration Monte Carlo simulation. 
 
 **Stochastic Boundaries (Triangular Distributions):**
-* **Peak Market Share:** 8% (Bear) | 15% (Base) | 33% (Bull)
+* **Peak Market Share:** 8% (Bear) | 15% (Base) | 20% (Bull)
 * **GTN Rebate:** 40% (Floor) | 50% (Base) | 65% (PBM Stress)
 * **Base WAC:** $3,628 (Lantus Parity) | $4,789 (Base) | $5,500 (Premium)
 * **Clinical POS:** 18.2% (Min) | 19.6% (Base) | 21.0% (Max) — Bounds calculated dynamically using a 95% Confidence Interval based on the exact 0.7% Standard Error published in the MIT Metabolic/Endocrinology dataset.
