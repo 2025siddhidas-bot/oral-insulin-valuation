@@ -20,7 +20,7 @@ $$rNPV=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS+\sum_{t=t_{la
 ### 2. Phase 1: R&D Cash Outflows
 Pre-launch capital burn is distributed across the specified duration of each clinical phase (Phase 1, Phase 2, Phase 3). These outflows are discounted back to Year 0:
 
-$$PV_{R\&D}=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS$$
+$$PV_{\text{R\&D}}=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS$$
 
 ### 3. Phase 2: Commercial Cash Inflows
 Once launched, the 20-year commercial window calculates net cash flow ($CF_t$) based on epidemiology scaling, target market capture, net pricing (WAC minus GTN), COGS, and the generic cliff ($\delta_t$):
