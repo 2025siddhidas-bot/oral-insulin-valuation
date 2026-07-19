@@ -11,9 +11,7 @@ st.markdown("Interactive valuation model featuring MIT BIO stage-gate risk, geog
 # --- 2. SIDEBAR (USER INTERFACE) ---
 st.sidebar.header("1. Commercial Parameters")
 target_wac = st.sidebar.slider("Base US WAC Price ($)", min_value=3628, max_value=6000, value=4789, step=10)
-# REVISED: GTN slider defaults to 75% based on Milliman insulin data
 gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=75, step=1) / 100
-# REVISED: Share slider defaults to 15%, max 20% based on Gabelli oral GLP-1 data
 peak_market_share = st.sidebar.slider("Peak Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
 
 st.sidebar.header("2. Intellectual Property")
@@ -31,56 +29,52 @@ stage_selection = st.sidebar.selectbox("Current Clinical Stage", list(stage_opti
 POS = stage_options[stage_selection]
 
 st.sidebar.header("4. R&D Timeline & Costs")
-st.sidebar.markdown("*(Annual burn spread across phase duration)*")
-p1_yrs = st.sidebar.number_input("Phase 1 Duration (Years)", value=1.5, step=0.5)
-p1_cost = st.sidebar.number_input("Phase 1 Total Cost ($M)", value=15.0, step=1.0) * 1e6
-p2_yrs = st.sidebar.number_input("Phase 2 Duration (Years)", value=2.5, step=0.5)
-p2_cost = st.sidebar.number_input("Phase 2 Total Cost ($M)", value=45.0, step=1.0) * 1e6
-p3_yrs = st.sidebar.number_input("Phase 3 Duration (Years)", value=3.0, step=0.5)
-# REVISED: Phase 3 cost bumped to a more realistic $150M for CVOT
-p3_cost = st.sidebar.number_input("Phase 3 Total Cost ($M)", value=150.0, step=1.0) * 1e6
+st.sidebar.markdown("*(Annual burn rate input)*")
+p1_yrs = st.sidebar.number_input("Phase 1 Duration (Years)", value=2.0, step=0.5)
+p1_burn = st.sidebar.number_input("Phase 1 Annual Burn ($M)", value=5.0, step=1.0) * 1e6
+p2_yrs = st.sidebar.number_input("Phase 2 Duration (Years)", value=3.0, step=0.5)
+p2_burn = st.sidebar.number_input("Phase 2 Annual Burn ($M)", value=8.0, step=1.0) * 1e6
+p3_yrs = st.sidebar.number_input("Phase 3 Duration (Years)", value=4.0, step=0.5)
+p3_burn = st.sidebar.number_input("Phase 3 Annual Burn ($M)", value=100.0, step=1.0) * 1e6
+p4_yrs = st.sidebar.number_input("NDA / Pre-Launch Duration (Years)", value=2.0, step=0.5)
+p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=15.0, step=1.0) * 1e6
 
 # --- 3. VALUATION ENGINE (BACKEND LOGIC) ---
 YEARS = 20
-# Split the 38M TAM into US and ROW proxies for accurate geographic pricing
-US_POPULATION = 4000000 
-ROW_POPULATION = 34000000
+US_POPULATION = 30000000 
+ROW_POPULATION = 470000000
 POP_CAGR = 0.0147
+ACCESS_RATE_BASE = 0.07    
+ACCESS_RATE_BULL = 0.155   
 WACC = 0.11
 POST_LOE_RETENTION = 0.15
-UPTAKE_CURVE = [0.05, 0.15, 0.35, 0.55, 0.75, 0.90, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+UPTAKE_CURVE = [0.10, 0.35, 0.65, 0.85, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.50, 0.25, 0.15, 0.10, 0.05]
 
-def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
-    # Geographical Pricing Logic
+def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs=False):
     annual_cogs = pts_usd * 365.0
     us_net_price = wac * (1 - gtn)
-    # ROW Net Price: 90% list discount, 20% standard international rebate, capped at a 15% minimum gross margin
     row_net_price = max((wac * 0.10) * 0.80, annual_cogs * 1.15) 
     
     total_rnpv = 0
     current_year = 1
     logs = []
     
-    # 1. Deduct R&D Burn (FIXED: Added POS risk-adjustment to R&D)
     if return_logs:
         logs.append("[1] Processing Clinical Trial Pipeline Cash Flows...")
         
-    phases = [(p1_yrs, p1_cost), (p2_yrs, p2_cost), (p3_yrs, p3_cost)]
-    for duration, cost in phases:
+    phases = [(p1_yrs, p1_burn), (p2_yrs, p2_burn), (p3_yrs, p3_burn), (p4_yrs, p4_burn)]
+    for duration, annual_burn in phases:
         if duration > 0:
-            annual_cost = cost / duration
             for _ in range(int(np.ceil(duration))):
-                discounted_burn = annual_cost / ((1 + WACC)**current_year)
-                # Risk-adjust the R&D cost
+                discounted_burn = annual_burn / ((1 + WACC)**current_year)
                 rnpv_burn = discounted_burn * ptrs
                 total_rnpv -= rnpv_burn
                 if return_logs:
-                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_cost/1e6:5.1f}M | rNPV Impact: ${-rnpv_burn/1e6:7.2f}M")
+                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_burn/1e6:5.1f}M | rNPV Impact: ${-rnpv_burn/1e6:7.2f}M")
                 current_year += 1
                 
     launch_year_offset = current_year
     
-    # 2. Commercial Launch Cash Flows (Geographically segmented)
     if return_logs:
         logs.append(f"\n[2] Processing {YEARS}-Year Commercialization Window (LOE Cliff at Yr {patent_years})...")
         
@@ -88,17 +82,14 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
     current_row_pop = ROW_POPULATION
     
     for yr in range(1, YEARS + 1):
-        # Compound populations
         current_us_pop *= (1 + POP_CAGR)
         current_row_pop *= (1 + POP_CAGR)
         
-        # Calculate captured patients
-        us_patients = current_us_pop * share * UPTAKE_CURVE[yr-1]
-        row_patients = current_row_pop * share * UPTAKE_CURVE[yr-1]
+        us_patients = current_us_pop * access_rate * share * UPTAKE_CURVE[yr-1]
+        row_patients = current_row_pop * access_rate * share * UPTAKE_CURVE[yr-1]
         
         revenue_factor = 1.0 if yr <= patent_years else POST_LOE_RETENTION
         
-        # Calculate blended revenue and total COGS
         gross_revenue = (us_patients * us_net_price + row_patients * row_net_price) * revenue_factor
         total_cogs = (us_patients + row_patients) * annual_cogs * revenue_factor
         
@@ -108,7 +99,6 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
         rnpv_yr = (cash_flow / discount_factor) * ptrs
         total_rnpv += rnpv_yr
         
-        # Log specific milestone years for the terminal output
         if return_logs and (yr in [1, 5, 10, patent_years, 15, YEARS]):
             cliff_note = " <--- [GENERIC CLIFF EXECUTED]" if yr == patent_years else ""
             rev_str = f"${gross_revenue/1e9:.2f}B" if gross_revenue >= 1e9 else f"${gross_revenue/1e6:.2f}M"
@@ -119,10 +109,9 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, return_logs=False):
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-# Grounded in the new, defensible proxy data definitions. 
-bear_rnpv, bear_logs = calculate_rnpv(3628, 0.85, 0.08, POS, patent_life_years, return_logs=True)
-base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, return_logs=True)
-bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 0.20, POS, patent_life_years, return_logs=True)
+bear_rnpv, bear_logs = calculate_rnpv(3628, 0.85, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
+base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
+bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, return_logs=True)
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
@@ -139,7 +128,6 @@ with col_bull:
     st.metric("🚀 Bull Case (20% Share, 60% GTN)", f"${bull_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bull_rnpv / POS) / 1e9:.2f} B**")
 
-# Expandable Terminal Logs
 with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
     col_log1, col_log2, col_log3 = st.columns(3)
     with col_log1:
@@ -154,19 +142,16 @@ st.divider()
 # --- 5. MONTE CARLO & TORNADO CHARTS ---
 col1, col2 = st.columns(2)
 
-# Run 10k Iterations 
 ITERATIONS = 10000
 sim_wac = np.random.triangular(3628, target_wac, 5445, ITERATIONS)
-# Dynamically adjust triangular bounds if the user overrides defaults massively
 sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.85, gtn_rebate), ITERATIONS)
 sim_share = np.random.triangular(min(0.08, peak_market_share), peak_market_share, max(0.20, peak_market_share), ITERATIONS)
-sim_ptrs = np.random.triangular(0.182, POS, min(0.210, POS + 0.05), ITERATIONS)
+sim_ptrs = np.random.triangular(max(0.01, POS - 0.014), POS, min(1.0, POS + 0.014), ITERATIONS)
 
 sim_rnpv = np.zeros(ITERATIONS)
 for i in range(ITERATIONS):
-    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_share[i], sim_ptrs[i], patent_life_years)
+    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_share[i], sim_ptrs[i], patent_life_years, ACCESS_RATE_BASE)
 
-# Chart 1: Monte Carlo Histogram
 with col1:
     st.subheader("Monte Carlo: Probability Distribution")
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -180,17 +165,13 @@ with col1:
     ax.grid(axis='y', alpha=0.3)
     st.pyplot(fig)
 
-# Chart 2: Tornado Sensitivity
 with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
-    
     base_b = base_rnpv / 1e9
-    # Swing calculations utilizing new Gabelli & Milliman bounds
-    swing_share = (calculate_rnpv(target_wac, gtn_rebate, 0.08, POS, patent_life_years)/1e9, calculate_rnpv(target_wac, gtn_rebate, 0.20, POS, patent_life_years)/1e9)
-    # GTN is inverse: Bear case (85%) is the lower bound, Bull case (60%) is upper bound
-    swing_gtn = (calculate_rnpv(target_wac, 0.85, peak_market_share, POS, patent_life_years)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years)/1e9)
-    swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years)/1e9, calculate_rnpv(5445, gtn_rebate, peak_market_share, POS, patent_life_years)/1e9)
-    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, peak_market_share, max(0.01, POS - 0.014), patent_life_years)/1e9, calculate_rnpv(target_wac, gtn_rebate, peak_market_share, min(1.0, POS + 0.014), patent_life_years)/1e9)
+    swing_share = (calculate_rnpv(target_wac, gtn_rebate, 0.08, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, 0.20, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
+    swing_gtn = (calculate_rnpv(target_wac, 0.85, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
+    swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(5445, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
+    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, peak_market_share, max(0.01, POS - 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, peak_market_share, min(1.0, POS + 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9)
 
     variables = ['Peak Market Share (8% - 20%)', 'US GTN Rebate (85% - 60%)', 'Base US WAC Price ($3,628 - $5,445)', 'Clinical POS (Min/Max CI)']
     swings = [swing_share, swing_gtn, swing_wac, swing_ptrs]
