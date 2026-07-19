@@ -13,7 +13,7 @@ The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. Th
 The valuation engine is built on a standard Risk-Adjusted Net Present Value (rNPV) architecture. It separates the timeline into two distinct phases: Pre-Launch R&D Cash Outflows and Post-Launch Commercial Cash Inflows.
 
 Recent Update: The model bifurcates global patient data into two distinct economic markets to account for the massive pricing delta between the US and the Rest of World (ROW).
-*   **US Market:** Modeled using higher WAC pricing offset by heavy PBM rebate requirements (GTN).
+*   **US Market:** Modeled using higher WAC pricing offset by heavy Pharmacy Benefit Manager (PBM) rebate requirements (GTN).
 *   **ROW Market:** Modeled using a 90% list price discount to reflect international, state-negotiated pricing mechanisms.
 
 ### 1. rNPV Equation
