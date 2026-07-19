@@ -6,103 +6,67 @@ Web Version: https://oral-insulin-valuation-jertplxv7tgdwjvpod2nmb.streamlit.app
 ## Overview
 This repository contains a full-scale pharmaceutical valuation engine built in Python and Streamlit. The model evaluates the Risk-Adjusted Net Present Value (rNPV) of a pre-clinical/Phase 1 oral insulin asset targeted at the Type 2 Diabetes (T2D) market. 
 
-The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. This isolates the valuation to the core commercial economics and clinical viability of the drug.
+The model strictly utilizes an **Unlevered Free Cash Flow (UFCF)** framework. This isolates the valuation to the core commercial economics and clinical viability of the drug, independent of capital structure. Furthermore, the engine outputs a dual-valuation: the strict probability-weighted **rNPV** and the **Un-risked Commercial NPV** to highlight the massive asymmetrical upside upon FDA approval.
 
 ## 🧮 Mathematical Framework
-
-The valuation engine is built on a standard Risk-Adjusted Net Present Value (rNPV) architecture. It separates the timeline into two distinct phases: Pre-Launch R&D Cash Outflows and Post-Launch Commercial Cash Inflows.
-
-Recent Update: The model bifurcates global patient data into two distinct economic markets to account for the massive pricing delta between the US and the Rest of World (ROW).
+The engine bifurcates global patient data into two distinct economic markets to account for the massive pricing delta between the US and the Rest of World (ROW):
 *   **US Market:** Modeled using higher WAC pricing offset by heavy Pharmacy Benefit Manager (PBM) rebate requirements (GTN).
-*   **ROW Market:** Modeled using a 90% list price discount to reflect international, state-negotiated pricing mechanisms.
+*   **ROW Market:** Modeled using a 90% list price discount and an additional 20% statutory market access rebate to reflect international, state-negotiated pricing mechanisms.
 
-### 1. rNPV Equation
-The total asset value is calculated by discounting all future cash flows by the Weighted Average Cost of Capital (WACC) and adjusting for the clinical Probability of Success (POS):
+### 1. The rNPV Equation
+The total asset value is calculated by discounting all future R&D outflows and geographically segmented commercial inflows by the Weighted Average Cost of Capital (WACC), adjusted for the clinical Probability of Success (POS):
 
-$$rNPV=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS+\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{CF_t}{(1+WACC)^t}\times POS$$
+$$rNPV = \left[ \sum_{t=1}^{t_{launch}} \frac{-Burn_t}{(1+WACC)^t} \times POS \right] + \left[ \sum_{t=t_{launch}+1}^{20} \frac{CF_{US,t} + CF_{ROW,t}}{(1+WACC)^t} \times POS \right]$$
 
-### 1.1. R&D Cash Outflows
-Pre-launch capital burn is distributed across the specified duration of each clinical phase (Phase 1, Phase 2, Phase 3). These outflows are discounted back to Year 0:
+### 2. Commercial Cash Inflows & S-Curve Adoption
+Cash flows are not realized instantly. The model applies a standard biopharma **S-Curve adoption rate** to simulate the 5-to-7-year ramp required to change physician prescribing habits and secure formulary placement.
 
-$$PV_{\text{RandD}}=\sum_{t=1}^{t_{launch}}\frac{-Burn_t}{(1+WACC)^t}\times POS$$
+*   **US Cash Flow:** $CF_{US,t} = (Patients_{US,t} \times WAC \times (1 - GTN)) - (Patients_{US,t} \times COGS)$
+*   **ROW Cash Flow:** $CF_{ROW,t} = (Patients_{ROW,t} \times (WAC \times 0.10) \times (1 - 0.20)) - (Patients_{ROW,t} \times COGS)$
 
-### 1.2. Commercial Cash Inflows
-Once launched, the 20-year commercial window calculates net cash flow ($CF_t$) based on epidemiology scaling, target market capture, net pricing (WAC minus GTN), COGS, and the generic cliff ($\delta_t$):
-
-$$PV_{Com}=\sum_{t=t_{launch}+1}^{t_{launch}+20}\frac{Patients_t\times NetPrice\times(1-COGS)\times\delta_t}{(1+WACC)^t}\times POS$$
-
----
 ---
 
 ## 📊 1. Epidemiology & Total Addressable Market (TAM)
-The patient funnel is grounded in micro-simulation analyses of global insulin dependency.
-* The Total Global T2D Population in 2030 is estimated at 511 million adults.
-* Of this population, 79.2 million adults with T2D will strictly require insulin to manage their HbA1c levels.
-* Based on current healthcare trajectories, only 38 million of these adults will actually have access to and use insulin.
-* This establishes a Base Case access rate of 7.43% (38 million accessing / 511 million total).
-* The Bull Case access rate is established at 15.49% (79.2 million needed / 511 million total).
-* The total global vial volume required for 2030 is projected at 633.7 million.
-* Source: Basu S, Yudkin J, Kehlenbrink S et al., Estimation of global insulin use for type 2 diabetes, 2018–30: a microsimulation analysis, The Lancet Diabetes & Endocrinology, 2018.
+The patient funnel leverages a micro-simulation analysis of global insulin dependency, split by macro-geography:
+*   **Global T2D Base:** 30 Million (United States) and 470 Million (Rest of World).
+*   **Clinical Access Rate:** The model filters this baseline by a 7.4% (Base) to 15.5% (Bull) access rate, isolating the specific subset of patients eligible for this exact therapy. (Study: Basu S, Yudkin J, Kehlenbrink S et al., Estimation of global insulin use for type 2 diabetes, 2018–30: a microsimulation analysis, The Lancet Diabetes & Endocrinology, 2018; 7, 25-33)
+*   Population growth is compounded annually at a 1.47% CAGR (accurately reflecting the IDF's projection of a 46% global increase in diabetes by 2050).
 
 ---
 
 ## 📈 2. Market Capture (LRx Proxy Dynamics)
-Since oral insulin is an emerging modality, market capture rates are proxied using historical adoption curves of insulin analogs and oral GLP-1s.
-* **Bear Case (8%):** Based on the absolute ceiling of adoption rates historically seen for insulin analogs. Sourced from IQVIA's report on insulin market dynamics.
-* **Base Case (15%):** Anchored between the 14% GLP-1 market share captured by Rybelsus (PharmaVoice) and the 16.4% oral revenue capture reported in Novo Nordisk's 2023 SEC Annual Results.
-* **Bull Case (20%):** Peak adoption is capped at 20% to reflect the competitive dynamics of oral GLP-1 and insulin transitions.
+Market capture rates are proxied using historical adoption curves of insulin analogs and Gabelli Funds data on oral GLP-1 transitions.
+*   **Bear Case (8%):** Absolute floor based on historical slow-adopting analogs. (Source: Source: IQVIA https://www.iqvia.com/insights/the-iqvia-institute/reports-and-publications/reports/understanding-insulin-market-dynamics-in-low-and-middle-income-countries)
+*   **Base Case (15%):** A defensible capture of the oral ceiling, targeting approximately half of the projected oral metabolic market. (Source: Source: https://www.pharmavoice.com/news/weight-loss-market-oral-glp1-novo-lilly/717148/)
+*   **Bull Case (20%):** Capped at 20% based on peak oral GLP-1 transition estimates, acknowledging competitive dynamics from current injectables.
 
 ---
 
 ## 💰 3. Commercial Pricing & Manufacturing Margins
 Pricing assumptions balance the standard of care with mathematically justified oral convenience premiums.
 
-**Wholesale Acquisition Cost (WAC):**
-* The baseline injectable WAC for Lantus is set at $3,628 per year, sourced from a Value in Health publication.
-* **Base Case WAC ($4,789/year):** Utilizes a 1.32x premium over Lantus, justified purely by the convenience of oral delivery.
-* **Bull Case WAC ($5,445/year):** Utilizes a 1.5x premium, modeling a scenario where clinical trials prove a statistically significant reduction in hypoglycemic events.
-* Source: Premium multiplier calculations are derived from Mixed Logic Model results published in Dove Press regarding patient preferences for T2D medications.
-
-**Cost of Goods Sold (COGS) & Price-to-Stockist (PTS):**
-Manufacturing costs are proxied using the launch-time Maximum Retail Price (MRP) of Rybelsus in India to simulate outsourced API production.
-* The consumer printed MRP for a pill in India is 315.00 INR.
-* Deducting a 12% GST yields a Base Trade Value of 281.25 INR.
-* Deducting a 20% Retail Margin yields a Price-to-Retailer of 225.00 INR.
-* Deducting a 10% Distributor Margin results in a Price-to-Stockist (PTS) of 204.54 INR, or roughly $2.12 USD per pill.
-* The modeled Base COGS is 16.84% (calculated as $2.21 PTS / $13.12 WAC). 
-* The modeled Bull COGS is 14.82% (calculated as $2.21 PTS / $14.91 WAC).
-
-**Gross-to-Net (GTN) Rebate:**
-* Modeled at a 75% baseline discount (Levy et al., 2018 average VAFSS discount of 48.3% rounded for metabolic markets and Milliman analysis of insulin cost structures). 
-* Monte Carlo boundaries are set at a 85% (Bear) and 60% (Bull) (40% is the absolute floor (IQVIA insulin discount data)).
+*   **Wholesale Acquisition Cost (WAC):** Scaled from a baseline injectable parity of $3,628 up to a $5,445 premium. The Base Case is modeled at $4,789/year. (Source: Value in Health Publication)
+*   **Gross-to-Net (GTN) Rebate:** The US market is characterized by severe Pharmacy Benefit Manager (PBM) rebate walls. The model applies an 85% (Bear), 75% (Base, matching the Milliman insulin benchmark), and 60% (Bull) GTN discount.
+*   **Cost of Goods Sold (COGS):** Calculated daily utilizing an Indian Price-to-Stockist (PTS) proxy of $2.21 per pill to simulate outsourced API production margins (approx. $806/year per patient).
 
 ---
 
 ## 🧬 4. Clinical Risk (PTRS) & Discount Rates
-The model abandons static, taxonomy-based risk averages in favor of longitudinal, phase-by-phase transition probabilities to dynamically un-risk the asset as it clears clinical hurdles.
-
-**Probability of Technical and Regulatory Success (PTRS):**
-* Data is strictly sourced from the MIT Cancer's study: Estimation of clinical trial success rates and related parameters.
-* For the Metabolic/Endocrinology therapeutic group, the Overall Probability of Success from Phase 1 to Approval is 19.6%.
-* The asset is evaluated using dynamic stage-gate transitions: Phase 1 to 2 (76.2%), Phase 2 to 3 (59.7%), and Phase 3 to Approval (51.6%).
-
-**Weighted Average Cost of Capital (WACC):**
-* The model utilizes a baseline WACC of 11%.
-* This is constructed using the Damodaran Biotech Industry standard WACC of roughly 9.01%, plus a 2% Company-Specific Risk Premium (CSRP).
-* The 2% premium is explicitly applied because an unproven oral insulin modality faces higher-than-average commercial adoption risks compared to traditional injectables.
+*   **PTRS:** Data is sourced from the MIT BIO study on clinical trial success rates. The overall Phase 1 to Approval probability is 19.6% for Metabolic/Endocrinology.
+*   **WACC:** 11% (Damodaran Biotech Industry standard of ~9% + 2% Company-Specific Risk Premium for novel administration routes).
 
 ---
 
 ## 🌪️ 5. Monte Carlo & Tornado Sensitivity Analysis
-To eliminate the unreliability of single-point estimates, the engine utilizes `numpy` and `matplotlib` to run a 10,000-iteration Monte Carlo simulation. 
+The engine utilizes `numpy` and `matplotlib` to run a 10,000-iteration Monte Carlo simulation, removing single-point estimate flaws.
 
 **Stochastic Boundaries (Triangular Distributions):**
-* **Peak Market Share:** 8% (Bear) | 15% (Base) | 20% (Bull)
-* **GTN Rebate:** 40% (Floor) | 50% (Base) | 65% (PBM Stress)
-* **Base WAC:** $3,628 (Lantus Parity) | $4,789 (Base) | $5,500 (Premium)
-* **Clinical POS:** 18.2% (Min) | 19.6% (Base) | 21.0% (Max) — Bounds calculated dynamically using a 95% Confidence Interval based on the exact 0.7% Standard Error published in the MIT Metabolic/Endocrinology dataset.
+*   **Peak Market Share:** 8% to 20%
+*   **US GTN Rebate:** 60% to 85%
+*   **Base WAC:** $3,628 to $5,445
+*   **Clinical POS:** Adjusts dynamically using a 95% Confidence Interval based on a +/- 1.4% Standard Error applied to the active clinical phase.
 
-The output generates a normal distribution (bell curve) outlining the 90% confidence interval of the asset's value, accompanied by a calculated Tornado Diagram isolating the financial swing of individual variables.
+Outputs include a normal distribution (bell curve) of the rNPV and a Tornado Diagram isolating the financial swing of individual variables.
 
 ---
 
@@ -110,7 +74,7 @@ The output generates a normal distribution (bell curve) outlining the 90% confid
 
 ### Option A: Run the Live Web Application
 The valuation engine has been deployed as an interactive web interface using Streamlit. 
-* **[Insert your Streamlit Cloud URL here]**
+*   **https://oral-insulin-valuation-jertplxv7tgdwjvpod2nmb.streamlit.app/**
 
 ### Option B: Run Locally via Python
 To run the 10,000-iteration Monte Carlo simulation on your local machine:
