@@ -130,7 +130,7 @@ def load_data():
         print("\n[!] WARNING: Could not find files. Using dummy global patient data for simulation purposes.")
         # Creating dummy split for US vs ROW logic to function without CSVs
         return pd.DataFrame({
-            'Country': ['United States', 'Rest of World'], 
+            'Country': ['United States of America', 'Rest of World'], 
             'T2D_Population': [30000000, 470000000]
         })
     
@@ -178,8 +178,9 @@ def calculate_rnpv(wac, gtn, pts, pos, capture_rate, patent_life, df, clinical_r
         actual_year += 1
 
     # Segment Demographics
-    us_base_pool = df[df['Country'] == 'United States']['T2D_Population'].sum()
-    row_base_pool = df[df['Country'] != 'United States']['T2D_Population'].sum()
+    us_base_pool = df[df['Country'] == 'United States of America']['T2D_Population'].sum()
+    row_base_pool = df[df['Country'] != 'United States of America']['T2D_Population'].sum()
+    # check if we are use this code captures all te US data because what if it is called US, USA or United States of America instead of just United States lol.
 
     # Commercial Launch Discounting
     for yr in range(1, YEARS + 1):
@@ -235,8 +236,8 @@ def print_valuation(df, active_scenario="Base", use_bull_clinical_need=False):
             actual_year += 1
             print(f"    R&D Yr {pre_yr:02d} | Capital Burn: ${burn/1e6:5.1f}M | rNPV Impact: ${rnpv_yr/1e6:7.2f}M")
 
-    us_base_pool = df[df['Country'] == 'United States']['T2D_Population'].sum()
-    row_base_pool = df[df['Country'] != 'United States']['T2D_Population'].sum()
+    us_base_pool = df[df['Country'] == 'United States of America']['T2D_Population'].sum()
+    row_base_pool = df[df['Country'] != 'United States of America']['T2D_Population'].sum()
 
     print(f"\n  [2] Processing 20-Year Commercialization Window (LOE Cliff at Yr {patent_life_years + 1})...")
     for yr in range(1, YEARS + 1):
