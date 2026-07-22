@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import io
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="rNPV Valuation Engine", layout="wide")
@@ -31,13 +32,13 @@ POS = stage_options[stage_selection]
 st.sidebar.header("4. R&D Timeline & Costs")
 st.sidebar.markdown("*(Annual burn rate input)*")
 p1_yrs = st.sidebar.number_input("Phase 1 Duration (Years)", value=2.0, step=0.5)
-p1_burn = st.sidebar.number_input("Phase 1 Annual Burn ($M)", value=5.0, step=1.0) * 1e6
+p1_burn = st.sidebar.number_input("Phase 1 Annual Burn ($M)", value=20.0, step=1.0) * 1e6
 p2_yrs = st.sidebar.number_input("Phase 2 Duration (Years)", value=3.0, step=0.5)
-p2_burn = st.sidebar.number_input("Phase 2 Annual Burn ($M)", value=8.0, step=1.0) * 1e6
+p2_burn = st.sidebar.number_input("Phase 2 Annual Burn ($M)", value=40.0, step=1.0) * 1e6
 p3_yrs = st.sidebar.number_input("Phase 3 Duration (Years)", value=4.0, step=0.5)
 p3_burn = st.sidebar.number_input("Phase 3 Annual Burn ($M)", value=100.0, step=1.0) * 1e6
 p4_yrs = st.sidebar.number_input("NDA / Pre-Launch Duration (Years)", value=2.0, step=0.5)
-p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=15.0, step=1.0) * 1e6
+p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=25.0, step=1.0) * 1e6
 
 # --- 3. VALUATION ENGINE (BACKEND LOGIC) ---
 YEARS = 20
@@ -109,15 +110,16 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-bear_rnpv, bear_logs = calculate_rnpv(3628, 0.85, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
+# Matching Python script bounds: Bear (3628 WAC, 90% GTN, 8% Share), Base (Dynamic), Bull (5500 WAC, 60% GTN, 20% Share, 15.5% Access)
+bear_rnpv, bear_logs = calculate_rnpv(3628, 0.90, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
 base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
-bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, return_logs=True)
+bull_rnpv, bull_logs = calculate_rnpv(5500, 0.60, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, return_logs=True)
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
 
 with col_bear:
-    st.metric("📉 Bear Case (8% Share, 85% GTN)", f"${bear_rnpv / 1e9:.2f} B")
+    st.metric("📉 Bear Case (8% Share, 90% GTN)", f"${bear_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bear_rnpv / POS) / 1e9:.2f} B**")
 
 with col_base:
@@ -137,14 +139,24 @@ with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
     with col_log3:
         st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(bull_rnpv/POS)/1e9:.3f} BILLION")
 
+# Download Button for Cash Flow Logs
+full_report = f"--- BEAR CASE ---\n{bear_logs}\n\n--- BASE CASE ---\n{base_logs}\n\n--- BULL CASE ---\n{bull_logs}"
+st.download_button(
+    label="📄 Download Detailed Cash Flows (.txt)",
+    data=full_report,
+    file_name="rNPV_Cash_Flow_Logs.txt",
+    mime="text/plain"
+)
+
 st.divider()
 
 # --- 5. MONTE CARLO & TORNADO CHARTS ---
 col1, col2 = st.columns(2)
 
 ITERATIONS = 10000
-sim_wac = np.random.triangular(3628, target_wac, 5445, ITERATIONS)
-sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.85, gtn_rebate), ITERATIONS)
+# Aligning Monte Carlo bounds exactly with valuation_model.py
+sim_wac = np.random.triangular(3628, target_wac, 5500, ITERATIONS)
+sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.90, gtn_rebate), ITERATIONS)
 sim_share = np.random.triangular(min(0.08, peak_market_share), peak_market_share, max(0.20, peak_market_share), ITERATIONS)
 sim_ptrs = np.random.triangular(max(0.01, POS - 0.014), POS, min(1.0, POS + 0.014), ITERATIONS)
 
@@ -164,16 +176,29 @@ with col1:
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
     st.pyplot(fig)
+    
+    # Download Button for Monte Carlo Chart
+    buf1 = io.BytesIO()
+    fig.savefig(buf1, format="png", bbox_inches="tight", dpi=300)
+    buf1.seek(0)
+    st.download_button(
+        label="📥 Download Monte Carlo Chart (.png)",
+        data=buf1,
+        file_name="Monte_Carlo_Distribution.png",
+        mime="image/png"
+    )
 
 with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
     base_b = base_rnpv / 1e9
+    
+    # Aligning Tornado calculation bounds exactly with valuation_model.py
     swing_share = (calculate_rnpv(target_wac, gtn_rebate, 0.08, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, 0.20, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
-    swing_gtn = (calculate_rnpv(target_wac, 0.85, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
-    swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(5445, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
+    swing_gtn = (calculate_rnpv(target_wac, 0.90, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
+    swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(5500, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
     swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, peak_market_share, max(0.01, POS - 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, peak_market_share, min(1.0, POS + 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9)
 
-    variables = ['Peak Market Share (8% - 20%)', 'US GTN Rebate (85% - 60%)', 'Base US WAC Price ($3,628 - $5,445)', 'Clinical POS (Min/Max CI)']
+    variables = ['Peak Market Share (8% - 20%)', 'US GTN Rebate (90% - 60%)', 'Base US WAC Price ($3,628 - $5,500)', 'Clinical POS (Min/Max CI)']
     swings = [swing_share, swing_gtn, swing_wac, swing_ptrs]
     
     fig2, ax2 = plt.subplots(figsize=(8, 5))
@@ -186,3 +211,14 @@ with col2:
     ax2.axvline(base_b, color='black', linewidth=2)
     ax2.set_xlabel("Asset Valuation ($ Billions)")
     st.pyplot(fig2)
+    
+    # Download Button for Tornado Chart
+    buf2 = io.BytesIO()
+    fig2.savefig(buf2, format="png", bbox_inches="tight", dpi=300)
+    buf2.seek(0)
+    st.download_button(
+        label="📥 Download Tornado Chart (.png)",
+        data=buf2,
+        file_name="Tornado_Sensitivity.png",
+        mime="image/png"
+    )
