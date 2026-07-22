@@ -110,7 +110,6 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-# Matching Python script bounds: Bear (3628 WAC, 90% GTN, 8% Share), Base (Dynamic), Bull (5500 WAC, 60% GTN, 20% Share, 15.5% Access)
 bear_rnpv, bear_logs = calculate_rnpv(3628, 0.90, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
 base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
 bull_rnpv, bull_logs = calculate_rnpv(5500, 0.60, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, return_logs=True)
@@ -139,7 +138,7 @@ with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
     with col_log3:
         st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(bull_rnpv/POS)/1e9:.3f} BILLION")
 
-# Download Button for Cash Flow Logs
+# Download Button for Text Logs
 full_report = f"--- BEAR CASE ---\n{bear_logs}\n\n--- BASE CASE ---\n{base_logs}\n\n--- BULL CASE ---\n{bull_logs}"
 st.download_button(
     label="📄 Download Detailed Cash Flows (.txt)",
@@ -154,7 +153,6 @@ st.divider()
 col1, col2 = st.columns(2)
 
 ITERATIONS = 10000
-# Aligning Monte Carlo bounds exactly with valuation_model.py
 sim_wac = np.random.triangular(3628, target_wac, 5500, ITERATIONS)
 sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.90, gtn_rebate), ITERATIONS)
 sim_share = np.random.triangular(min(0.08, peak_market_share), peak_market_share, max(0.20, peak_market_share), ITERATIONS)
@@ -177,7 +175,7 @@ with col1:
     ax.grid(axis='y', alpha=0.3)
     st.pyplot(fig)
     
-    # Download Button for Monte Carlo Chart
+    # Download Button for Chart 1
     buf1 = io.BytesIO()
     fig.savefig(buf1, format="png", bbox_inches="tight", dpi=300)
     buf1.seek(0)
@@ -192,7 +190,6 @@ with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
     base_b = base_rnpv / 1e9
     
-    # Aligning Tornado calculation bounds exactly with valuation_model.py
     swing_share = (calculate_rnpv(target_wac, gtn_rebate, 0.08, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, 0.20, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
     swing_gtn = (calculate_rnpv(target_wac, 0.90, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
     swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(5500, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
@@ -212,7 +209,7 @@ with col2:
     ax2.set_xlabel("Asset Valuation ($ Billions)")
     st.pyplot(fig2)
     
-    # Download Button for Tornado Chart
+    # Download Button for Chart 2
     buf2 = io.BytesIO()
     fig2.savefig(buf2, format="png", bbox_inches="tight", dpi=300)
     buf2.seek(0)
@@ -222,3 +219,85 @@ with col2:
         file_name="Tornado_Sensitivity.png",
         mime="image/png"
     )
+
+st.divider()
+
+# --- 6. COMPREHENSIVE PDF REPORT GENERATOR ---
+st.subheader("📑 Export Complete Report")
+st.markdown("Download a full PDF tear-sheet containing your active inputs, clinical parameters, Monte Carlo/Tornado charts, and Base Case cash flow logs.")
+
+try:
+    from fpdf import FPDF
+    import tempfile
+    import os
+
+    # Create the PDF Document
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "Oral Insulin rNPV - Comprehensive Valuation Report", ln=True, align="C")
+    pdf.ln(5)
+
+    # Section 1: User Inputs
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, "1. Commercial & Clinical Parameters Selected:", ln=True)
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 6, f"Base US WAC Price: ${target_wac:,.0f}", ln=True)
+    pdf.cell(0, 6, f"US GTN Rebate: {gtn_rebate*100:.0f}%", ln=True)
+    pdf.cell(0, 6, f"Peak Global Share: {peak_market_share*100:.0f}%", ln=True)
+    pdf.cell(0, 6, f"Clinical Stage: {stage_selection}", ln=True)
+    pdf.cell(0, 6, f"Calculated Base Case rNPV: ${base_rnpv/1e9:.3f} Billion", ln=True)
+    pdf.ln(5)
+    
+    # Save the matplotlib figures to temporary files so FPDF can read them
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f1, \
+         tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f2, \
+         tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as fpdf_out:
+         
+         fig.savefig(f1.name, format="png", bbox_inches="tight")
+         fig2.savefig(f2.name, format="png", bbox_inches="tight")
+         
+         # Section 2 & 3: Charts
+         pdf.set_font("Arial", 'B', 12)
+         pdf.cell(0, 10, "2. Monte Carlo Distribution:", ln=True)
+         pdf.image(f1.name, w=160)
+         
+         pdf.add_page()
+         pdf.cell(0, 10, "3. Tornado Sensitivity Analysis:", ln=True)
+         pdf.image(f2.name, w=160)
+         
+         # Section 4: Cash Flow Logs
+         pdf.add_page()
+         pdf.cell(0, 10, "4. Base Case Cash Flow Log:", ln=True)
+         pdf.set_font("Courier", '', 8)
+         
+         # Write the logs line by line
+         for line in base_logs.split('\n'):
+             safe_line = line.encode('latin-1', 'replace').decode('latin-1')
+             pdf.multi_cell(0, 4, safe_line)
+             
+         # Save the finalized PDF to the third temp file
+         pdf.output(fpdf_out.name)
+         
+         # Read the PDF back into bytes for the Streamlit download button
+         with open(fpdf_out.name, "rb") as f:
+             pdf_bytes = f.read()
+             
+    # Clean up the temporary files from the server
+    os.unlink(f1.name)
+    os.unlink(f2.name)
+    os.unlink(fpdf_out.name)
+    
+    # Render the master download button
+    st.download_button(
+        label="Download Comprehensive PDF Report",
+        data=pdf_bytes,
+        file_name="Oral_Insulin_Valuation_Report.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
+
+except ImportError:
+    st.warning("⚠️ PDF generation requires the 'fpdf' library. Please add 'fpdf' to your requirements.txt file on GitHub to enable this button.")
