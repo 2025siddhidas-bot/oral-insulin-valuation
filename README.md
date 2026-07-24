@@ -16,13 +16,13 @@ The engine bifurcates global patient data into two distinct economic markets to 
 ### 1. The rNPV Equation
 The total asset value is calculated by discounting all future R&D outflows and geographically segmented commercial inflows by the Weighted Average Cost of Capital (WACC), adjusted for the clinical Probability of Success (POS):
 
-$$rNPV = \left[ \sum_{t=1}^{t_{launch}} \frac{-Burn_t}{(1+WACC)^t} \times POS \right] + \left[ \sum_{t=t_{launch}+1}^{20} \frac{CF_{US,t} + CF_{ROW,t}}{(1+WACC)^t} \times POS \right]$$
+$$rNPV = \left[ \sum_{t=1}^{T_{pre}} \frac{-R\&D_t}{(1 + WACC)^t} \right] \times POS + \left[ \sum_{t=1}^{20} \frac{ \overbrace{\Big[ Pat_{US,t} \big( WAC(1 - GTN_{US}) - COGS_{ann} \big) \Big]}^{\text{US Net Cash Flow}} + \overbrace{\Big[ Pat_{ROW,t} \big( WAC(0.10)(1 - GTN_{ROW}) - COGS_{ann} \big) \Big]}^{\text{ROW Net Cash Flow}} }{(1 + WACC)^{t + T_{pre}}} \times E_t \right] \times POS$$
 
 ### 2. Commercial Cash Inflows & S-Curve Adoption
 Cash flows are not realized instantly. The model applies a standard biopharma **S-Curve adoption rate** to simulate the 5-to-7-year ramp required to change physician prescribing habits and secure formulary placement.
 
-*   **US Cash Flow:** $CF_{US,t} = (Patients_{US,t} \times WAC \times (1 - GTN)) - (Patients_{US,t} \times COGS)$
-*   **ROW Cash Flow:** $CF_{ROW,t} = (Patients_{ROW,t} \times (WAC \times 0.10) \times (1 - 0.20)) - (Patients_{ROW,t} \times COGS)$
+*   **US Cash Flow:** $CF_{US,t} = (Patients_{US,t} \times US WAC \times (1 - US GTN)) - (Patients_{US,t} \times COGS)$
+*   **ROW Cash Flow:** $CF_{ROW,t} = (Patients_{ROW,t} \times (US WAC \times 0.10) \times (1 - ROW GTN)) - (Patients_{ROW,t} \times COGS)$
 
 ---
 
@@ -45,9 +45,9 @@ Market capture rates are proxied using historical adoption curves of insulin ana
 ## 💰 3. Commercial Pricing & Manufacturing Margins
 Pricing assumptions balance the standard of care with mathematically justified oral convenience premiums.
 
-*   **Wholesale Acquisition Cost (WAC):** Scaled from a baseline injectable parity of $3,628 up to a $5,445 premium. The Base Case is modeled at $4,789/year. (Source: Value in Health Publication)
-*   **Gross-to-Net (GTN) Rebate:** The US market is characterized by severe Pharmacy Benefit Manager (PBM) rebate walls. The model applies an 85% (Bear), 75% (Base, matching the Milliman insulin benchmark), and 60% (Bull) GTN discount.
-*   **Cost of Goods Sold (COGS):** Calculated daily utilizing an Indian Price-to-Stockist (PTS) proxy of $2.21 per pill to simulate outsourced API production margins (approx. $806/year per patient).
+*   **Wholesale Acquisition Cost (US WAC):** Scaled from a baseline injectable parity of $3,628 up to a $5,445 premium. The Base Case is modeled at $4,789/year. (Source: Value in Health Publication). ROW WAC taken as 10% of US WAC.
+*   **Gross-to-Net (GTN) Rebate:** The US market is characterized by severe Pharmacy Benefit Manager (PBM) rebate walls. The model applies a 76% US GTN discount, and 20% ROW GTN discount.
+*   **Cost of Goods Sold (COGS):** Calculated utilizing API values from Gotham et al.'s study 'Production costs and potential prices for biosimilars of human insulin and insulin analogues'.
 
 ---
 
@@ -61,9 +61,10 @@ Pricing assumptions balance the standard of care with mathematically justified o
 The engine utilizes `numpy` and `matplotlib` to run a 10,000-iteration Monte Carlo simulation, removing single-point estimate flaws.
 
 **Stochastic Boundaries (Triangular Distributions):**
+*   **Adoption Rates:** 7.4% to 15.5%
 *   **Peak Market Share:** 8% to 20%
-*   **US GTN Rebate:** 60% to 85%
 *   **Base WAC:** $3,628 to $5,445
+*   **COGS:** $1.37 to $1.18 per pill
 *   **Clinical POS:** Adjusts dynamically using a 95% Confidence Interval based on a +/- 1.4% Standard Error applied to the active clinical phase.
 
 Outputs include a normal distribution (bell curve) of the rNPV and a Tornado Diagram isolating the financial swing of individual variables.
