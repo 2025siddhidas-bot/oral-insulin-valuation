@@ -28,7 +28,7 @@ Cash flows are not realized instantly. The model applies a standard biopharma **
 
 ## 📊 1. Epidemiology & Total Addressable Market (TAM)
 The patient funnel leverages a micro-simulation analysis of global insulin dependency, split by macro-geography:
-*   **Global T2D Base:** 30 Million (United States) and 470 Million (Rest of World).
+*   **Global T2D Base:** 37.3 Million (United States) and 544.1 Million (Rest of World)...as of 2024 (IDF Global Datasets)
 *   **Clinical Access Rate:** The model filters this baseline by a 7.4% (Base) to 15.5% (Bull) access rate, isolating the specific subset of patients eligible for this exact therapy. (Study: Basu S, Yudkin J, Kehlenbrink S et al., Estimation of global insulin use for type 2 diabetes, 2018–30: a microsimulation analysis, The Lancet Diabetes & Endocrinology, 2018; 7, 25-33)
 *   Population growth is compounded annually at a 1.47% CAGR (accurately reflecting the IDF's projection of a 46% global increase in diabetes by 2050).
 
