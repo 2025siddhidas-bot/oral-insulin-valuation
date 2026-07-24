@@ -18,6 +18,16 @@ The total asset value is calculated by discounting all future R&D outflows and g
 
 $$rNPV = \left[ \sum_{t=1}^{T_{pre}} \frac{-R\&D_t}{(1 + WACC)^t} \right] \times POS + \left[ \sum_{t=1}^{20} \frac{ \overbrace{\Big[ Pat_{US,t} \big( WAC(1 - GTN_{US}) - COGS_{ann} \big) \Big]}^{\text{US Net Cash Flow}} + \overbrace{\Big[ Pat_{ROW,t} \big( WAC(0.10)(1 - GTN_{ROW}) - COGS_{ann} \big) \Big]}^{\text{ROW Net Cash Flow}} }{(1 + WACC)^{t + T_{pre}}} \times E_t \right] \times POS$$
 
+### 2. Supporting Variables
+
+**The Patient Capture Function:**
+$$Pat_{US,t} = Pop_{US, base} \times (1 + CAGR)^t \times Access \times Share \times Uptake_t$$
+
+$$Pat_{ROW,t} = Pop_{ROW, base} \times (1 + CAGR)^t \times Access \times Share \times Uptake_t$$
+
+**The Exclusivity Factor (The Generic Cliff):**
+$$E_t = \begin{cases} 1.0, & \text{if } t \le 12 \text{ (Under Patent)} \\ 0.15, & \text{if } t > 12 \text{ (Post-LOE Cliff)} \end{cases}$$
+
 ### 2. Commercial Cash Inflows & S-Curve Adoption
 Cash flows are not realized instantly. The model applies a standard biopharma **S-Curve adoption rate** to simulate the 5-to-7-year ramp required to change physician prescribing habits and secure formulary placement.
 
