@@ -12,8 +12,9 @@ st.markdown("Interactive valuation model featuring MIT BIO stage-gate risk, geog
 # --- 2. SIDEBAR (USER INTERFACE) ---
 st.sidebar.header("1. Commercial Parameters")
 target_wac = st.sidebar.slider("Base US WAC Price ($)", min_value=3628, max_value=6000, value=4789, step=10)
+# GTN Rebate controls the universal metric across all 3 scenarios
 gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=76, step=1) / 100
-peak_market_share = st.sidebar.slider("Peak Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
+peak_market_share = st.sidebar.slider("Base Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
 
 st.sidebar.header("2. Intellectual Property")
 patent_life_years = st.sidebar.slider("Years of Exclusivity", min_value=8, max_value=15, value=12, step=1)
@@ -42,12 +43,15 @@ p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=25.0, step=1.0) 
 # --- 3. VALUATION ENGINE (BACKEND LOGIC) ---
 YEARS = 20
 POPULATION_CAGR = 0.0147
-ACCESS_RATE_BASE = 0.074
-ACCESS_RATE_BULL = 0.155
 WACC = 0.11
 POST_LOE_RETENTION = 0.15
 
-# Empirical Peptide Uptake Curve (Tendler et al., 2026)
+# Variables that Swing
+WAC_PRICES = {"Bear": 3628.0, "Base": target_wac, "Bull": 5445.0}
+COGS_PER_PILL = {"Bear": 1.37, "Base": 1.27, "Bull": 1.18}
+ADOPTION_RATES = {"Bear": 0.08, "Base": peak_market_share, "Bull": 0.20}
+ACCESS_RATES = {"Bear": 0.074, "Base": 0.074, "Bull": 0.155}
+
 UPTAKE_CURVE = [
     0.05, 0.335, 0.65, 0.88, 1.00, 
     1.00, 1.00, 1.00, 1.00, 1.00,  
@@ -67,7 +71,6 @@ def clean_df(df, target_val_name):
     if 'Country' in df.columns: 
         df['Country'] = df['Country'].astype(str).str.strip()
     
-    # EXCLUSION FILTER: Stripping out IDF macro-regions that double count the population
     exclusions = [
         'World', 'Africa', 'Europe', 'Middle East and North Africa', 
         'North America and Caribbean', 'South and Central America', 
@@ -89,7 +92,6 @@ def load_data():
         df_t1_all = pd.read_csv('People with type 1 diabetes (all age groups) by Country_Territory.csv')
         df_t1_youth = pd.read_csv('People with type 1 diabetes (0-19 y) by Country_Territory.csv')
     except FileNotFoundError:
-        # Fallback to macro aggregates if CSVs are missing in the Streamlit cloud directory
         return pd.DataFrame({
             'Country': ['United States of America', 'Rest of World'], 
             'T2D_Population': [37256319, 544119737]
@@ -115,7 +117,6 @@ def calculate_rnpv(wac, gtn, cogs_per_pill, share, ptrs, patent_years, access_ra
     annual_cogs = cogs_per_pill * 365.0
     us_net_price = wac * (1 - gtn)
     
-    # ROW Economics (RAND 90% List Discount, 20% standard international rebate)
     row_wac = wac * 0.10
     row_net_price = max(row_wac * 0.80, annual_cogs * 1.15) 
     
@@ -173,24 +174,24 @@ def calculate_rnpv(wac, gtn, cogs_per_pill, share, ptrs, patent_years, access_ra
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-# Bottom-Up COGS implemented directly into the Scenario calculations
-bear_rnpv, bear_logs = calculate_rnpv(3628, 0.90, 1.37, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, market_data, return_logs=True)
-base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data, return_logs=True)
-bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 1.18, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, market_data, return_logs=True)
+# ALL SCENARIOS now lock GTN and POS uniformly. They only vary across WAC, COGS, Share, and Access.
+bear_rnpv, bear_logs = calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Bear"], ADOPTION_RATES["Bear"], POS, patent_life_years, ACCESS_RATES["Bear"], market_data, return_logs=True)
+base_rnpv, base_logs = calculate_rnpv(WAC_PRICES["Base"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data, return_logs=True)
+bull_rnpv, bull_logs = calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Bull"], ADOPTION_RATES["Bull"], POS, patent_life_years, ACCESS_RATES["Bull"], market_data, return_logs=True)
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
 
 with col_bear:
-    st.metric("📉 Bear Case (8% Share, 90% GTN, $1.37 COGS)", f"${bear_rnpv / 1e9:.2f} B")
+    st.metric(f"📉 Bear Case ({ADOPTION_RATES['Bear']*100:.0f}% Share, $3.6K WAC, $1.37 COGS)", f"${bear_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bear_rnpv / POS) / 1e9:.2f} B**")
 
 with col_base:
-    st.metric("🎯 Base Case (Current Inputs)", f"${base_rnpv / 1e9:.2f} B")
+    st.metric(f"🎯 Base Case ({ADOPTION_RATES['Base']*100:.0f}% Share, $4.7K WAC, $1.27 COGS)", f"${base_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(base_rnpv / POS) / 1e9:.2f} B**")
 
 with col_bull:
-    st.metric("🚀 Bull Case (20% Share, 60% GTN, $1.18 COGS)", f"${bull_rnpv / 1e9:.2f} B")
+    st.metric(f"🚀 Bull Case ({ADOPTION_RATES['Bull']*100:.0f}% Share, $5.4K WAC, $1.18 COGS)", f"${bull_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bull_rnpv / POS) / 1e9:.2f} B**")
 
 with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
@@ -202,7 +203,6 @@ with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
     with col_log3:
         st.code(f"--- RUNNING VALUATION SCENARIO: BULL ---\n\n{bull_logs}\n\n{'-'*45}\nFINAL BULL ASSET rNPV: ${bull_rnpv/1e9:.3f} BILLION\nUN-RISKED COMMERCIAL NPV: ${(bull_rnpv/POS)/1e9:.3f} BILLION")
 
-# Download Button for Text Logs
 full_report = f"--- BEAR CASE ---\n{bear_logs}\n\n--- BASE CASE ---\n{base_logs}\n\n--- BULL CASE ---\n{bull_logs}"
 st.download_button(
     label="📄 Download Detailed Cash Flows (.txt)",
@@ -217,15 +217,16 @@ st.divider()
 col1, col2 = st.columns(2)
 
 ITERATIONS = 10000
-sim_wac = np.random.triangular(3628, target_wac, 5445, ITERATIONS)
-sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.90, gtn_rebate), ITERATIONS)
-sim_share = np.random.triangular(min(0.08, peak_market_share), peak_market_share, max(0.20, peak_market_share), ITERATIONS)
-sim_cogs = np.random.triangular(1.18, 1.27, 1.37, ITERATIONS)
+sim_wac = np.random.triangular(WAC_PRICES["Bear"], WAC_PRICES["Base"], WAC_PRICES["Bull"], ITERATIONS)
+sim_gtn = np.random.triangular(0.60, gtn_rebate, 0.90, ITERATIONS)
+sim_share = np.random.triangular(ADOPTION_RATES["Bear"], ADOPTION_RATES["Base"], ADOPTION_RATES["Bull"], ITERATIONS)
+sim_cogs = np.random.triangular(COGS_PER_PILL["Bull"], COGS_PER_PILL["Base"], COGS_PER_PILL["Bear"], ITERATIONS)
+sim_access = np.random.triangular(ACCESS_RATES["Base"], ACCESS_RATES["Base"], ACCESS_RATES["Bull"], ITERATIONS)
 sim_ptrs = np.random.triangular(max(0.01, POS - 0.014), POS, min(1.0, POS + 0.014), ITERATIONS)
 
 sim_rnpv = np.zeros(ITERATIONS)
 for i in range(ITERATIONS):
-    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_cogs[i], sim_share[i], sim_ptrs[i], patent_life_years, ACCESS_RATE_BASE, market_data)
+    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_cogs[i], sim_share[i], sim_ptrs[i], patent_life_years, sim_access[i], market_data)
 
 with col1:
     st.subheader("Monte Carlo: Probability Distribution")
@@ -240,7 +241,6 @@ with col1:
     ax.grid(axis='y', alpha=0.3)
     st.pyplot(fig)
     
-    # Download Button for Chart 1
     buf1 = io.BytesIO()
     fig.savefig(buf1, format="png", bbox_inches="tight", dpi=300)
     buf1.seek(0)
@@ -255,28 +255,32 @@ with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
     base_b = base_rnpv / 1e9
     
-    # Sensitivities defined: (Bear Condition / Lower Valuation, Bull Condition / Higher Valuation)
-    swing_share = (calculate_rnpv(target_wac, gtn_rebate, 1.27, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
-                   calculate_rnpv(target_wac, gtn_rebate, 1.27, 0.20, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    swing_share = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Bear"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                   calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Bull"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
     
-    swing_gtn = (calculate_rnpv(target_wac, 0.90, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
-                 calculate_rnpv(target_wac, 0.60, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    swing_wac = (calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                 calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
     
-    swing_wac = (calculate_rnpv(3628, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
-                 calculate_rnpv(5445, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    swing_cogs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bear"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                  calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bull"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
+
+    swing_access = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                    calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Bull"], market_data)/1e9)
     
-    swing_cogs = (calculate_rnpv(target_wac, gtn_rebate, 1.37, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
-                  calculate_rnpv(target_wac, gtn_rebate, 1.18, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
-    
-    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, max(0.01, POS - 0.014), patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
-                  calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, min(1.0, POS + 0.014), patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], max(0.01, POS - 0.014), patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                  calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], min(1.0, POS + 0.014), patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
+
+    # Note: Added GTN to the Tornado to still show its extreme sensitivity weight, even though scenarios fix it at 76%. 
+    swing_gtn = (calculate_rnpv(target_wac, 0.90, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+                 calculate_rnpv(target_wac, 0.60, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
 
     swings_dict = {
         'Peak Market Share (8% - 20%)': (swing_share, swing_share[1] - swing_share[0]),
-        'US GTN Rebate (90% - 60%)': (swing_gtn, swing_gtn[1] - swing_gtn[0]),
         'Base US WAC Price ($3,628 - $5,445)': (swing_wac, swing_wac[1] - swing_wac[0]),
+        'Access Rate (7.4% - 15.5%)': (swing_access, swing_access[1] - swing_access[0]),
         'COGS Per Pill ($1.37 - $1.18)': (swing_cogs, swing_cogs[1] - swing_cogs[0]),
-        'Clinical POS (Min/Max CI)': (swing_ptrs, swing_ptrs[1] - swing_ptrs[0])
+        'Clinical POS (Min/Max CI)': (swing_ptrs, swing_ptrs[1] - swing_ptrs[0]),
+        'US GTN Rebate (90% - 60%)': (swing_gtn, swing_gtn[1] - swing_gtn[0])
     }
     
     sorted_swings = dict(sorted(swings_dict.items(), key=lambda item: item[1][1], reverse=False))
@@ -296,7 +300,6 @@ with col2:
     ax2.set_xlabel("Asset Valuation ($ Billions)")
     st.pyplot(fig2)
     
-    # Download Button for Chart 2
     buf2 = io.BytesIO()
     fig2.savefig(buf2, format="png", bbox_inches="tight", dpi=300)
     buf2.seek(0)
@@ -318,16 +321,13 @@ try:
     import tempfile
     import os
 
-    # Create the PDF Document
     pdf = FPDF()
     pdf.add_page()
     
-    # Title
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, "Oral Insulin rNPV - Comprehensive Valuation Report", ln=True, align="C")
     pdf.ln(5)
 
-    # Section 1: User Inputs
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "1. Commercial & Clinical Parameters Selected:", ln=True)
     pdf.set_font("Arial", '', 10)
@@ -338,7 +338,6 @@ try:
     pdf.cell(0, 6, f"Calculated Base Case rNPV: ${base_rnpv/1e9:.3f} Billion", ln=True)
     pdf.ln(5)
     
-    # Save the matplotlib figures to temporary files so FPDF can read them
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f1, \
          tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f2, \
          tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as fpdf_out:
@@ -346,7 +345,6 @@ try:
          fig.savefig(f1.name, format="png", bbox_inches="tight")
          fig2.savefig(f2.name, format="png", bbox_inches="tight")
          
-         # Section 2 & 3: Charts
          pdf.set_font("Arial", 'B', 12)
          pdf.cell(0, 10, "2. Monte Carlo Distribution:", ln=True)
          pdf.image(f1.name, w=160)
@@ -355,29 +353,23 @@ try:
          pdf.cell(0, 10, "3. Tornado Sensitivity Analysis:", ln=True)
          pdf.image(f2.name, w=160)
          
-         # Section 4: Cash Flow Logs
          pdf.add_page()
          pdf.cell(0, 10, "4. Base Case Cash Flow Log:", ln=True)
          pdf.set_font("Courier", '', 8)
          
-         # Write the logs line by line
          for line in base_logs.split('\n'):
              safe_line = line.encode('latin-1', 'replace').decode('latin-1')
              pdf.multi_cell(0, 4, safe_line)
              
-         # Save the finalized PDF to the third temp file
          pdf.output(fpdf_out.name)
          
-         # Read the PDF back into bytes for the Streamlit download button
          with open(fpdf_out.name, "rb") as f:
              pdf_bytes = f.read()
              
-    # Clean up the temporary files from the server
     os.unlink(f1.name)
     os.unlink(f2.name)
     os.unlink(fpdf_out.name)
     
-    # Render the master download button
     st.download_button(
         label="Download Comprehensive PDF Report",
         data=pdf_bytes,
