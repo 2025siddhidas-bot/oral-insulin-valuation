@@ -16,7 +16,7 @@ The engine bifurcates global patient data into two distinct economic markets to 
 ### 1. The rNPV Equation
 The total asset value is calculated by discounting all future R&D outflows and geographically segmented commercial inflows by the Weighted Average Cost of Capital (WACC), adjusted for the clinical Probability of Success (POS):
 
-$$rNPV = \left[ \sum_{t=1}^{T_{pre}} \frac{-R\&D_t}{(1 + WACC)^t} \right] \times POS + \left[ \sum_{t=1}^{20} \frac{ \overbrace{\Big[ Pat_{US,t} \big( WAC(1 - GTN_{US}) - COGS_{ann} \big) \Big]}^{\text{US Net Cash Flow}} + \overbrace{\Big[ Pat_{ROW,t} \big( WAC(0.10)(1 - GTN_{ROW}) - COGS_{ann} \big) \Big]}^{\text{ROW Net Cash Flow}} }{(1 + WACC)^{t + T_{pre}}} \times E_t \right] \times POS$$
+$$rNPV = \left[ \sum_{t=1}^{T_{pre}} \frac{-RandD_t}{(1 + WACC)^t} \right] \times POS + \left[ \sum_{t=1}^{20} \frac{ \overbrace{\Big[ Pat_{US,t} \big( WAC(1 - GTN_{US}) - COGS_{ann} \big) \Big]}^{\text{US Net Cash Flow}} + \overbrace{\Big[ Pat_{ROW,t} \big( WAC(0.10)(1 - GTN_{ROW}) - COGS_{ann} \big) \Big]}^{\text{ROW Net Cash Flow}} }{(1 + WACC)^{t + T_{pre}}} \times E_t \right] \times POS$$
 
 ### 2. Supporting Variables
 
