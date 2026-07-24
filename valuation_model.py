@@ -93,12 +93,12 @@ ADOPTION_RATES = {
 WACC = 0.11         
 YEARS = 20          
 
-# Standard Biopharma S-Curve Launch Uptake (Peaks at Year 5)
+# Empirical Peptide Uptake Curve (Tendler et al., 2026)
 UPTAKE_CURVE = [
-    0.10, 0.35, 0.65, 0.85, 1.00,  
+    0.05, 0.335, 0.65, 0.88, 1.00, # 5-Year Ramp (44% CAGR)
+    1.00, 1.00, 1.00, 1.00, 1.00,  # 7-Year Plateau 
     1.00, 1.00, 1.00, 1.00, 1.00,  
-    1.00, 1.00, 1.00, 1.00, 1.00,  
-    0.50, 0.25, 0.15, 0.10, 0.05   
+    0.50, 0.25, 0.15, 0.10, 0.05   # Generic Cliff
 ]
 
 # ---------------------------------------------------------
