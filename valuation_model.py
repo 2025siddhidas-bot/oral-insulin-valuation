@@ -17,17 +17,26 @@ except ValueError:
     print("\n[!] Invalid commercial input. Defaulting to baseline parameters ($4,789 WAC, 76% GTN)...")
     target_wac, gtn_rebate = 4789.0, 0.76
 
-# New Bottom-Up Unit Economics 
-COGS_PER_PILL = {
-    "Bear": 1.37,  # 100 IU formulation
-    "Base": 1.27,  # 75 IU formulation
-    "Bull": 1.18   # 50 IU formulation
-}
-
+# The 4 Variables that shift across Scenarios
 WAC_PRICES = {
     "Bear": 3628.0,
     "Base": 4789.0,
     "Bull": 5445.0
+}
+COGS_PER_PILL = {
+    "Bear": 1.37,  
+    "Base": 1.27,  
+    "Bull": 1.18   
+}
+ADOPTION_RATES = {
+    "Bear": 0.08,   
+    "Base": 0.15,   
+    "Bull": 0.20    
+}
+ACCESS_RATES = {
+    "Bear": 0.074,
+    "Base": 0.074,
+    "Bull": 0.155
 }
 
 ANNUAL_COGS_BASE = COGS_PER_PILL["Base"] * 365.0
@@ -40,7 +49,6 @@ print(f"-> Calculated Annual COGS Per Patient (Base): ${ANNUAL_COGS_BASE:,.2f}")
 # ---------------------------------------------------------
 print("\n[CLINICAL RISK & INTELLECTUAL PROPERTY]")
 
-# Dynamic MIT Stage-Gate PTRS (From MIT Table 2: Metabolic/Endocrinology)
 CUMULATIVE_PTRS_MAP = {
     "1": 0.196,  # Phase 1 Start
     "2": 0.241,  # Phase 2 Start
@@ -55,7 +63,7 @@ print("  3 = Phase 3 (Pivotal/CVOT)")
 print("  4 = NDA Submitted / Pre-Launch")
 current_stage = input("Enter the number corresponding to the current stage (1-4): ").strip()
 
-POS = CUMULATIVE_PTRS_MAP.get(current_stage, 0.196) # Defaults to P1 (19.6%)
+POS = CUMULATIVE_PTRS_MAP.get(current_stage, 0.196) 
 print(f"-> Risk-Adjustment (Cumulative PTRS) locked at: {POS * 100:.1f}%")
 
 try:
@@ -91,19 +99,9 @@ print(f"\n-> Total Pre-Launch Pipeline Timeline Constructed: {years_to_launch} Y
 # 4. GLOBAL MACRO VALUATION PARAMETERS 
 # ---------------------------------------------------------
 POPULATION_CAGR = 0.0147   
-ACCESS_RATE_BASE = 0.074
-ACCESS_RATE_BULL = 0.155   
-
-ADOPTION_RATES = {
-    "Bear": 0.08,   
-    "Base": 0.15,   
-    "Bull": 0.20    
-}
-
 WACC = 0.11         
 YEARS = 20          
 
-# Empirical Peptide Uptake Curve (Tendler et al., 2026)
 UPTAKE_CURVE = [
     0.05, 0.335, 0.65, 0.88, 1.00,
     1.00, 1.00, 1.00, 1.00, 1.00,  
@@ -125,7 +123,6 @@ def clean_df(df, target_val_name):
     if 'Country' in df.columns: 
         df['Country'] = df['Country'].astype(str).str.strip()
     
-    # EXCLUSION FILTER: Stripping out IDF macro-regions that double count the population
     exclusions = [
         'World', 'Africa', 'Europe', 'Middle East and North Africa', 
         'North America and Caribbean', 'South and Central America', 
@@ -157,7 +154,6 @@ def load_data():
     df_t1_all = clean_df(df_t1_all, 'Type_1_All_Ages')
     df_t1_youth = clean_df(df_t1_youth, 'Type_1_0_19')
     
-    # Total diabetics requires scaling, T1D is already absolute
     df_total['Total_Diabetics_20_79'] *= 1000
     
     master_df = pd.merge(df_total, df_t1_all, on='Country', how='outer')
@@ -171,13 +167,10 @@ def load_data():
 # ---------------------------------------------------------
 # 6. CORE VALUATION ENGINE (DCF & rNPV)
 # ---------------------------------------------------------
-def calculate_rnpv(wac, gtn, cogs_per_pill, pos, capture_rate, patent_life, df, clinical_rate=ACCESS_RATE_BASE):
-    """Silent rNPV calculator optimized for 10,000x Monte Carlo loops with US/ROW segmentation."""
-    
+def calculate_rnpv(wac, gtn, cogs_per_pill, pos, capture_rate, access_rate, patent_life, df):
     annual_cogs = cogs_per_pill * 365.0
     us_net_price = wac * (1 - gtn)
     
-    # ROW Economics (RAND 90% List Discount, 20% standard international rebate)
     row_wac = wac * 0.10
     row_net_price = row_wac * (1 - 0.20)
     
@@ -201,8 +194,8 @@ def calculate_rnpv(wac, gtn, cogs_per_pill, pos, capture_rate, patent_life, df, 
         us_pool = us_base_pool * ((1 + POPULATION_CAGR) ** yr)
         row_pool = row_base_pool * ((1 + POPULATION_CAGR) ** yr)
         
-        captured_us = us_pool * clinical_rate * capture_rate * UPTAKE_CURVE[yr - 1]
-        captured_row = row_pool * clinical_rate * capture_rate * UPTAKE_CURVE[yr - 1]
+        captured_us = us_pool * access_rate * capture_rate * UPTAKE_CURVE[yr - 1]
+        captured_row = row_pool * access_rate * capture_rate * UPTAKE_CURVE[yr - 1]
         
         gross_us = captured_us * us_net_price * revenue_factor
         gross_row = captured_row * row_net_price * revenue_factor
@@ -217,13 +210,12 @@ def calculate_rnpv(wac, gtn, cogs_per_pill, pos, capture_rate, patent_life, df, 
         
     return total_rnpv
 
-def print_valuation(df, active_scenario="Base", use_bull_clinical_need=False):
-    """Verbose version of the calculator for terminal output."""
+def print_valuation(df, active_scenario="Base"):
     print(f"\n" + "="*50)
     print(f"--- RUNNING VALUATION SCENARIO: {active_scenario.upper()} ---")
     print("="*50)
     
-    clinical_rate = ACCESS_RATE_BULL if use_bull_clinical_need else ACCESS_RATE_BASE
+    access_rate = ACCESS_RATES[active_scenario]
     capture_rate = ADOPTION_RATES[active_scenario]
     cogs_per_pill = COGS_PER_PILL[active_scenario]
     wac = WAC_PRICES[active_scenario]
@@ -251,8 +243,8 @@ def print_valuation(df, active_scenario="Base", use_bull_clinical_need=False):
     for yr in range(1, YEARS + 1):
         revenue_factor = 1.0 if yr <= patent_life_years else POST_LOE_RETENTION
         
-        captured_us = us_base_pool * ((1 + POPULATION_CAGR) ** yr) * clinical_rate * capture_rate * UPTAKE_CURVE[yr - 1]
-        captured_row = row_base_pool * ((1 + POPULATION_CAGR) ** yr) * clinical_rate * capture_rate * UPTAKE_CURVE[yr - 1]
+        captured_us = us_base_pool * ((1 + POPULATION_CAGR) ** yr) * access_rate * capture_rate * UPTAKE_CURVE[yr - 1]
+        captured_row = row_base_pool * ((1 + POPULATION_CAGR) ** yr) * access_rate * capture_rate * UPTAKE_CURVE[yr - 1]
         
         total_revenue = (captured_us * us_net_price + captured_row * row_net_price) * revenue_factor
         total_cogs = (captured_us + captured_row) * annual_cogs * revenue_factor
@@ -281,32 +273,29 @@ def print_valuation(df, active_scenario="Base", use_bull_clinical_need=False):
 def run_monte_carlo(df):
     print("\n[+] INITIALIZING MONTE CARLO SIMULATION (10,000 ITERATIONS)...")
     
-    # 1. Define Strict Triangular Distributions
     gtn_dist = np.random.triangular(0.60, gtn_rebate, 0.90, 10000)
     wac_dist = np.random.triangular(WAC_PRICES["Bear"], WAC_PRICES["Base"], WAC_PRICES["Bull"], 10000)
     share_dist = np.random.triangular(ADOPTION_RATES["Bear"], ADOPTION_RATES["Base"], ADOPTION_RATES["Bull"], 10000)
     cogs_dist = np.random.triangular(COGS_PER_PILL["Bull"], COGS_PER_PILL["Base"], COGS_PER_PILL["Bear"], 10000)
+    access_dist = np.random.triangular(ACCESS_RATES["Bear"], ACCESS_RATES["Base"], ACCESS_RATES["Bull"], 10000)
     
     pos_min = max(0.01, POS - 0.014)
     pos_max = min(1.00, POS + 0.014)
     pos_dist = np.random.triangular(pos_min, POS, pos_max, 10000)
     
-    # 2. Execute 10,000 Calculations
     results = []
     for i in range(10000):
-        val = calculate_rnpv(wac_dist[i], gtn_dist[i], cogs_dist[i], pos_dist[i], share_dist[i], patent_life_years, df)
+        val = calculate_rnpv(wac_dist[i], gtn_dist[i], cogs_dist[i], pos_dist[i], share_dist[i], access_dist[i], patent_life_years, df)
         results.append(val / 1e9) 
         
     results = np.array(results)
     
-    # 3. Plot Monte Carlo Bell Curve
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     
     axes[0].hist(results, bins=50, color='#1e3a8a', alpha=0.8, edgecolor='white')
     axes[0].axvline(np.percentile(results, 5), color='#dc2626', linestyle='dashed', linewidth=2, label='5th Percentile')
     axes[0].axvline(np.percentile(results, 95), color='#16a34a', linestyle='dashed', linewidth=2, label='95th Percentile')
     axes[0].axvline(np.mean(results), color='#eab308', linestyle='solid', linewidth=3, label='Mean Valuation')
-    
     axes[0].set_title('Monte Carlo Simulation: rNPV Probability Distribution', fontsize=12, fontweight='bold')
     axes[0].set_xlabel('Risk-Adjusted Net Present Value ($ Billions)', fontsize=10)
     axes[0].set_ylabel('Frequency (10,000 Iterations)', fontsize=10)
@@ -315,31 +304,34 @@ def run_monte_carlo(df):
 
     print("[+] SIMULATION COMPLETE. CALCULATING SENSITIVITY TORNADO...")
     
-    # 4. Tornado Sensitivity Analysis Logic
-    base_rnpv = calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9
-    
-    # Note: Bear cases (higher cost/rebate, lower price/share) are indexed at 0, Bull at 1
-    gtn_swing = (calculate_rnpv(target_wac, 0.90, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9,
-                 calculate_rnpv(target_wac, 0.60, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9)
+    base_rnpv = calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9
                  
-    wac_swing = (calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9,
-                 calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9)
+    wac_swing = (calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9,
+                 calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9)
                  
-    share_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Bear"], patent_life_years, df) / 1e9,
-                   calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Bull"], patent_life_years, df) / 1e9)
-                   
-    pos_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], pos_min, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9,
-                 calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], pos_max, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9)
+    share_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Bear"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9,
+                   calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Bull"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9)
 
-    cogs_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bear"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9,
-                  calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bull"], POS, ADOPTION_RATES["Base"], patent_life_years, df) / 1e9)
+    access_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Bear"], patent_life_years, df) / 1e9,
+                    calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Bull"], patent_life_years, df) / 1e9)
+
+    cogs_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bear"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9,
+                  calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bull"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9)
+
+    pos_swing = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], pos_min, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9,
+                 calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], pos_max, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9)
+
+    # Added GTN to the Tornado to show investors its extreme sensitivity, even though the base scenarios fix it at 76%
+    gtn_swing = (calculate_rnpv(target_wac, 0.90, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9,
+                 calculate_rnpv(target_wac, 0.60, COGS_PER_PILL["Base"], POS, ADOPTION_RATES["Base"], ACCESS_RATES["Base"], patent_life_years, df) / 1e9)
 
     swings = {
-        'US GTN Rebate (90% to 60%)': (gtn_swing, gtn_swing[1] - gtn_swing[0]),
         'Peak Market Share (8% to 20%)': (share_swing, share_swing[1] - share_swing[0]),
         'Base WAC Price ($3,628 to $5,445)': (wac_swing, wac_swing[1] - wac_swing[0]),
+        'Access Rate (7.4% to 15.5%)': (access_swing, access_swing[1] - access_swing[0]),
         'COGS Per Pill ($1.37 to $1.18)': (cogs_swing, cogs_swing[1] - cogs_swing[0]),
-        'Clinical POS (Min/Max Conf. Interval)': (pos_swing, pos_swing[1] - pos_swing[0])
+        'Clinical POS (Min/Max Conf. Interval)': (pos_swing, pos_swing[1] - pos_swing[0]),
+        'US GTN Rebate (90% to 60%)': (gtn_swing, gtn_swing[1] - gtn_swing[0])
     }
     
     sorted_swings = dict(sorted(swings.items(), key=lambda item: item[1][1], reverse=False))
@@ -369,8 +361,8 @@ def run_monte_carlo(df):
 if __name__ == "__main__":
     market_data = load_data()
     
-    print_valuation(market_data, active_scenario="Bear", use_bull_clinical_need=False)
-    print_valuation(market_data, active_scenario="Base", use_bull_clinical_need=False)
-    print_valuation(market_data, active_scenario="Bull", use_bull_clinical_need=True)
+    print_valuation(market_data, active_scenario="Bear")
+    print_valuation(market_data, active_scenario="Base")
+    print_valuation(market_data, active_scenario="Bull")
     
     run_monte_carlo(market_data)
