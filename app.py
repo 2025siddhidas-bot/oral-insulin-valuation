@@ -12,12 +12,11 @@ st.markdown("Interactive valuation model featuring MIT BIO stage-gate risk, geog
 # --- 2. SIDEBAR (USER INTERFACE) ---
 st.sidebar.header("1. Commercial Parameters")
 target_wac = st.sidebar.slider("Base US WAC Price ($)", min_value=3628, max_value=6000, value=4789, step=10)
-gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=75, step=1) / 100
+gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=76, step=1) / 100
 peak_market_share = st.sidebar.slider("Peak Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
 
 st.sidebar.header("2. Intellectual Property")
 patent_life_years = st.sidebar.slider("Years of Exclusivity", min_value=8, max_value=15, value=12, step=1)
-pts_usd = st.sidebar.number_input("Indian PTS Cost ($)", value=2.21)
 
 st.sidebar.header("3. Clinical Risk (MIT Data)")
 stage_options = {
@@ -42,19 +41,83 @@ p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=25.0, step=1.0) 
 
 # --- 3. VALUATION ENGINE (BACKEND LOGIC) ---
 YEARS = 20
-US_POPULATION = 37256319 
-ROW_POPULATION = 544119737
-POP_CAGR = 0.0147
+POPULATION_CAGR = 0.0147
 ACCESS_RATE_BASE = 0.074
 ACCESS_RATE_BULL = 0.155
 WACC = 0.11
 POST_LOE_RETENTION = 0.15
-UPTAKE_CURVE = [0.10, 0.35, 0.65, 0.85, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.50, 0.25, 0.15, 0.10, 0.05]
 
-def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs=False):
-    annual_cogs = pts_usd * 365.0
+# Empirical Peptide Uptake Curve (Tendler et al., 2026)
+UPTAKE_CURVE = [
+    0.05, 0.335, 0.65, 0.88, 1.00, 
+    1.00, 1.00, 1.00, 1.00, 1.00,  
+    1.00, 1.00, 1.00, 1.00, 1.00,  
+    0.50, 0.25, 0.15, 0.10, 0.05   
+]
+
+@st.cache_data
+def clean_df(df, target_val_name):
+    country_col = 'Location' if 'Location' in df.columns else 'Country_Territory'
+    if country_col not in df.columns and 'Country' in df.columns: country_col = 'Country'
+        
+    val_col = 'Value' if 'Value' in df.columns else 'Total'
+    if val_col not in df.columns and 'Expenditure' in df.columns: val_col = 'Expenditure'
+        
+    df = df.rename(columns={country_col: 'Country', val_col: target_val_name})
+    if 'Country' in df.columns: 
+        df['Country'] = df['Country'].astype(str).str.strip()
+    
+    # EXCLUSION FILTER: Stripping out IDF macro-regions that double count the population
+    exclusions = [
+        'World', 'Africa', 'Europe', 'Middle East and North Africa', 
+        'North America and Caribbean', 'South and Central America', 
+        'South-East Asia', 'Western Pacific', 'High income', 
+        'Middle income', 'Low income'
+    ]
+    df = df[~df['Country'].isin(exclusions)]
+        
+    if df[target_val_name].dtype == object:
+        df[target_val_name] = df[target_val_name].astype(str).str.replace(',', '', regex=True)
+        
+    df[target_val_name] = pd.to_numeric(df[target_val_name], errors='coerce').fillna(0)
+    return df[['Country', target_val_name]]
+
+@st.cache_data
+def load_data():
+    try:
+        df_total = pd.read_csv('Estimated total number of adults (20–79 years) with diabetes in 2024.csv')
+        df_t1_all = pd.read_csv('People with type 1 diabetes (all age groups) by Country_Territory.csv')
+        df_t1_youth = pd.read_csv('People with type 1 diabetes (0-19 y) by Country_Territory.csv')
+    except FileNotFoundError:
+        # Fallback to macro aggregates if CSVs are missing in the Streamlit cloud directory
+        return pd.DataFrame({
+            'Country': ['United States of America', 'Rest of World'], 
+            'T2D_Population': [37256319, 544119737]
+        })
+    
+    df_total = clean_df(df_total, 'Total_Diabetics_20_79')
+    df_t1_all = clean_df(df_t1_all, 'Type_1_All_Ages')
+    df_t1_youth = clean_df(df_t1_youth, 'Type_1_0_19')
+    
+    df_total['Total_Diabetics_20_79'] *= 1000
+    
+    master_df = pd.merge(df_total, df_t1_all, on='Country', how='outer')
+    master_df = pd.merge(master_df, df_t1_youth, on='Country', how='outer').fillna(0)
+    
+    master_df['Type_1_Adults'] = (master_df['Type_1_All_Ages'] - master_df['Type_1_0_19']).clip(lower=0) 
+    master_df['T2D_Population'] = (master_df['Total_Diabetics_20_79'] - master_df['Type_1_Adults']).clip(lower=0) 
+    
+    return master_df
+
+market_data = load_data()
+
+def calculate_rnpv(wac, gtn, cogs_per_pill, share, ptrs, patent_years, access_rate, df, return_logs=False):
+    annual_cogs = cogs_per_pill * 365.0
     us_net_price = wac * (1 - gtn)
-    row_net_price = max((wac * 0.10) * 0.80, annual_cogs * 1.15) 
+    
+    # ROW Economics (RAND 90% List Discount, 20% standard international rebate)
+    row_wac = wac * 0.10
+    row_net_price = max(row_wac * 0.80, annual_cogs * 1.15) 
     
     total_rnpv = 0
     current_year = 1
@@ -77,17 +140,17 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs
     launch_year_offset = current_year
     
     if return_logs:
-        logs.append(f"\n[2] Processing {YEARS}-Year Commercialization Window (LOE Cliff at Yr {patent_years})...")
+        logs.append(f"\n[2] Processing {YEARS}-Year Commercialization Window (LOE Cliff at Yr {patent_years + 1})...")
         
-    current_us_pop = US_POPULATION
-    current_row_pop = ROW_POPULATION
+    us_base_pool = df[df['Country'] == 'United States of America']['T2D_Population'].sum()
+    row_base_pool = df[df['Country'] != 'United States of America']['T2D_Population'].sum()
     
     for yr in range(1, YEARS + 1):
-        current_us_pop *= (1 + POP_CAGR)
-        current_row_pop *= (1 + POP_CAGR)
+        us_pool = us_base_pool * ((1 + POPULATION_CAGR) ** yr)
+        row_pool = row_base_pool * ((1 + POPULATION_CAGR) ** yr)
         
-        us_patients = current_us_pop * access_rate * share * UPTAKE_CURVE[yr-1]
-        row_patients = current_row_pop * access_rate * share * UPTAKE_CURVE[yr-1]
+        us_patients = us_pool * access_rate * share * UPTAKE_CURVE[yr-1]
+        row_patients = row_pool * access_rate * share * UPTAKE_CURVE[yr-1]
         
         revenue_factor = 1.0 if yr <= patent_years else POST_LOE_RETENTION
         
@@ -100,8 +163,8 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs
         rnpv_yr = (cash_flow / discount_factor) * ptrs
         total_rnpv += rnpv_yr
         
-        if return_logs and (yr in [1, 5, 10, patent_years, 15, YEARS]):
-            cliff_note = " <--- [GENERIC CLIFF EXECUTED]" if yr == patent_years else ""
+        if return_logs and (yr in [1, 5, 10, patent_years, patent_years+1, 15, YEARS]):
+            cliff_note = " <--- [GENERIC CLIFF EXECUTED]" if yr == patent_years + 1 else ""
             rev_str = f"${gross_revenue/1e9:.2f}B" if gross_revenue >= 1e9 else f"${gross_revenue/1e6:.2f}M"
             logs.append(f"  Com. Yr {yr:02d} | Net Revenue: {rev_str:>7} | rNPV: ${rnpv_yr/1e6:7.2f}M{cliff_note}")
             
@@ -110,15 +173,16 @@ def calculate_rnpv(wac, gtn, share, ptrs, patent_years, access_rate, return_logs
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-bear_rnpv, bear_logs = calculate_rnpv(3628, 0.90, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
-base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, return_logs=True)
-bull_rnpv, bull_logs = calculate_rnpv(5500, 0.60, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, return_logs=True)
+# Bottom-Up COGS implemented directly into the Scenario calculations
+bear_rnpv, bear_logs = calculate_rnpv(3628, 0.90, 1.37, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, market_data, return_logs=True)
+base_rnpv, base_logs = calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data, return_logs=True)
+bull_rnpv, bull_logs = calculate_rnpv(5445, 0.60, 1.18, 0.20, POS, patent_life_years, ACCESS_RATE_BULL, market_data, return_logs=True)
 
 st.subheader("📊 Scenario Valuations")
 col_bear, col_base, col_bull = st.columns(3)
 
 with col_bear:
-    st.metric("📉 Bear Case (8% Share, 90% GTN)", f"${bear_rnpv / 1e9:.2f} B")
+    st.metric("📉 Bear Case (8% Share, 90% GTN, $1.37 COGS)", f"${bear_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bear_rnpv / POS) / 1e9:.2f} B**")
 
 with col_base:
@@ -126,7 +190,7 @@ with col_base:
     st.caption(f"Un-risked Commercial NPV: **${(base_rnpv / POS) / 1e9:.2f} B**")
 
 with col_bull:
-    st.metric("🚀 Bull Case (20% Share, 60% GTN)", f"${bull_rnpv / 1e9:.2f} B")
+    st.metric("🚀 Bull Case (20% Share, 60% GTN, $1.18 COGS)", f"${bull_rnpv / 1e9:.2f} B")
     st.caption(f"Un-risked Commercial NPV: **${(bull_rnpv / POS) / 1e9:.2f} B**")
 
 with st.expander("🔍 View Detailed Year-by-Year Cash Flows (Terminal Logs)"):
@@ -153,14 +217,15 @@ st.divider()
 col1, col2 = st.columns(2)
 
 ITERATIONS = 10000
-sim_wac = np.random.triangular(3628, target_wac, 5500, ITERATIONS)
+sim_wac = np.random.triangular(3628, target_wac, 5445, ITERATIONS)
 sim_gtn = np.random.triangular(min(0.60, gtn_rebate), gtn_rebate, max(0.90, gtn_rebate), ITERATIONS)
 sim_share = np.random.triangular(min(0.08, peak_market_share), peak_market_share, max(0.20, peak_market_share), ITERATIONS)
+sim_cogs = np.random.triangular(1.18, 1.27, 1.37, ITERATIONS)
 sim_ptrs = np.random.triangular(max(0.01, POS - 0.014), POS, min(1.0, POS + 0.014), ITERATIONS)
 
 sim_rnpv = np.zeros(ITERATIONS)
 for i in range(ITERATIONS):
-    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_share[i], sim_ptrs[i], patent_life_years, ACCESS_RATE_BASE)
+    sim_rnpv[i] = calculate_rnpv(sim_wac[i], sim_gtn[i], sim_cogs[i], sim_share[i], sim_ptrs[i], patent_life_years, ACCESS_RATE_BASE, market_data)
 
 with col1:
     st.subheader("Monte Carlo: Probability Distribution")
@@ -190,16 +255,38 @@ with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
     base_b = base_rnpv / 1e9
     
-    swing_share = (calculate_rnpv(target_wac, gtn_rebate, 0.08, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, 0.20, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
-    swing_gtn = (calculate_rnpv(target_wac, 0.90, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, 0.60, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
-    swing_wac = (calculate_rnpv(3628, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(5500, gtn_rebate, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE)/1e9)
-    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, peak_market_share, max(0.01, POS - 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9, calculate_rnpv(target_wac, gtn_rebate, peak_market_share, min(1.0, POS + 0.014), patent_life_years, ACCESS_RATE_BASE)/1e9)
+    # Sensitivities defined: (Bear Condition / Lower Valuation, Bull Condition / Higher Valuation)
+    swing_share = (calculate_rnpv(target_wac, gtn_rebate, 1.27, 0.08, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
+                   calculate_rnpv(target_wac, gtn_rebate, 1.27, 0.20, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    
+    swing_gtn = (calculate_rnpv(target_wac, 0.90, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
+                 calculate_rnpv(target_wac, 0.60, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    
+    swing_wac = (calculate_rnpv(3628, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
+                 calculate_rnpv(5445, gtn_rebate, 1.27, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    
+    swing_cogs = (calculate_rnpv(target_wac, gtn_rebate, 1.37, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
+                  calculate_rnpv(target_wac, gtn_rebate, 1.18, peak_market_share, POS, patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
+    
+    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, max(0.01, POS - 0.014), patent_life_years, ACCESS_RATE_BASE, market_data)/1e9, 
+                  calculate_rnpv(target_wac, gtn_rebate, 1.27, peak_market_share, min(1.0, POS + 0.014), patent_life_years, ACCESS_RATE_BASE, market_data)/1e9)
 
-    variables = ['Peak Market Share (8% - 20%)', 'US GTN Rebate (90% - 60%)', 'Base US WAC Price ($3,628 - $5,500)', 'Clinical POS (Min/Max CI)']
-    swings = [swing_share, swing_gtn, swing_wac, swing_ptrs]
+    swings_dict = {
+        'Peak Market Share (8% - 20%)': (swing_share, swing_share[1] - swing_share[0]),
+        'US GTN Rebate (90% - 60%)': (swing_gtn, swing_gtn[1] - swing_gtn[0]),
+        'Base US WAC Price ($3,628 - $5,445)': (swing_wac, swing_wac[1] - swing_wac[0]),
+        'COGS Per Pill ($1.37 - $1.18)': (swing_cogs, swing_cogs[1] - swing_cogs[0]),
+        'Clinical POS (Min/Max CI)': (swing_ptrs, swing_ptrs[1] - swing_ptrs[0])
+    }
+    
+    sorted_swings = dict(sorted(swings_dict.items(), key=lambda item: item[1][1], reverse=False))
+    
+    variables = list(sorted_swings.keys())
+    mins = [val[0][0] for val in sorted_swings.values()]
+    maxs = [val[0][1] for val in sorted_swings.values()]
     
     fig2, ax2 = plt.subplots(figsize=(8, 5))
-    for i, (low, high) in enumerate(swings):
+    for i, (low, high) in enumerate(zip(mins, maxs)):
         ax2.broken_barh([(low, base_b - low)], (i - 0.4, 0.8), facecolors='#E63946')
         ax2.broken_barh([(base_b, high - base_b)], (i - 0.4, 0.8), facecolors='#2A9D8F')
         
