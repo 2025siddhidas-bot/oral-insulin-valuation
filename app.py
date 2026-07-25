@@ -25,11 +25,13 @@ st.sidebar.header("3. Clinical Risk (MIT Data)")
 # probability that an asset which has ALREADY REACHED a given stage will go
 # on to be approved. Source: Wong, Siah & Lo (2019), Biostatistics 20(2),
 # Table 2, Metabolic/Endocrinology-specific cumulative success rates.
+# CUMULATIVE_PTRS_MAP now stores tuples: (Cumulative POS, 2x Standard Error Bound)
+# Source: Wong, Siah & Lo (2019), Biostatistics 20(2), Table 2 (Metabolic/Endocrinology)
 CUMULATIVE_PTRS_MAP = {
-    "1": 0.196,  # Phase 1 Start
-    "2": 0.241,  # Phase 2 Start
-    "3": 0.516,  # Phase 3 Start
-    "4": 0.850   # NDA / Pre-Launch
+    "1": (0.196, 0.014),  # Phase 1 Start (Overall POS, SE 0.7% * 2)
+    "2": (0.241, 0.018),  # Phase 2 Start (POS 2,APP, SE 0.9% * 2)
+    "3": (0.516, 0.030),  # Phase 3 Start (POS 3,APP, SE 1.5% * 2)
+    "4": (0.850, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
 }
 STAGE_ORDER = ["1", "2", "3", "4"]
 STAGE_LABELS = {
