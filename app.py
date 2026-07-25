@@ -272,7 +272,7 @@ pos_dist = np.random.triangular(pos_min, current_pos, pos_max, ITERATIONS)
 
 sim_rnpv = np.zeros(ITERATIONS)
 for i in range(ITERATIONS):
-    sim_rnpv[i] = calculate_rnpv(wac=sim_wac[i], gtn=sim_gtn[i], cogs_per_pill=sim_cogs[i], share=sim_share[i], ptrs=sim_ptrs[i], patent_years=patent_life_years, access_rate=sim_access[i], df=market_data)
+    sim_rnpv[i] = calculate_rnpv(wac=sim_wac[i], gtn=sim_gtn[i], cogs_per_pill=sim_cogs[i], share=sim_share[i], ptrs=pos_dist[i], patent_years=patent_life_years, access_rate=sim_access[i], df=market_data)
 
 with col1:
     st.subheader("Monte Carlo: Probability Distribution")
