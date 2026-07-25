@@ -53,11 +53,13 @@ print("\n[CLINICAL RISK & INTELLECTUAL PROPERTY]")
 # probability that an asset which has ALREADY REACHED a given stage will go
 # on to be approved. Source: Wong, Siah & Lo (2019), Biostatistics 20(2),
 # Table 2, Metabolic/Endocrinology-specific cumulative success rates.
+# CUMULATIVE_PTRS_MAP stores tuples: (Cumulative POS, 2x Standard Error Bound)
+# Source: Wong, Siah & Lo (2019), Biostatistics 20(2), Table 2 (Metabolic/Endocrinology)
 CUMULATIVE_PTRS_MAP = {
-    "1": 0.196,  # Phase 1 Start
-    "2": 0.241,  # Phase 2 Start
-    "3": 0.516,  # Phase 3 Start
-    "4": 0.850   # NDA / Pre-Launch
+    "1": (0.196, 0.014),  # Phase 1 Start (Overall POS, SE 0.7% * 2)
+    "2": (0.241, 0.018),  # Phase 2 Start (POS 2,APP, SE 0.9% * 2)
+    "3": (0.516, 0.030),  # Phase 3 Start (POS 3,APP, SE 1.5% * 2)
+    "4": (0.850, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
 }
 STAGE_ORDER = ["1", "2", "3", "4"]
 STAGE_LABELS = {
@@ -374,9 +376,11 @@ def run_monte_carlo(df):
     cogs_dist = np.random.triangular(COGS_PER_PILL["Bull"], COGS_PER_PILL["Base"], COGS_PER_PILL["Bear"], 10000)
     access_dist = np.random.triangular(ACCESS_RATES["Bear"], ACCESS_RATES["Base"], ACCESS_RATES["Bull"], 10000)
 
-    pos_min = max(0.01, POS - 0.014)
-    pos_max = min(1.00, POS + 0.014)
-    pos_dist = np.random.triangular(pos_min, POS, pos_max, 10000)
+    current_pos, current_se_bound = CUMULATIVE_PTRS_MAP[current_stage]
+
+    pos_min = max(0.01, current_pos - current_se_bound)
+    pos_max = min(1.00, current_pos + current_se_bound)
+    pos_dist = np.random.triangular(pos_min, current_pos, pos_max, 10000)
 
     results = []
     for i in range(10000):
