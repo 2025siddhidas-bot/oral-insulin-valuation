@@ -18,21 +18,25 @@ except ValueError:
     print("\n[!] Invalid commercial input. Defaulting to baseline parameters ($4,789 WAC, 76% GTN)...")
     target_wac, gtn_rebate = 4789.0, 0.76
 
+# Value in Health
 WAC_PRICES = {
     "Bear": 3628.0,
     "Base": 4789.0,
     "Bull": 5445.0
 }
+# BMJ Global Health (Gotham et al., 2018)
 COGS_PER_PILL = {
     "Bear": 1.37,
     "Base": 1.27,
     "Bull": 1.18
 }
+# Bear: IQVIA Non-Big 3 ceiling; Base: Rybelsus SEC Form 6-K; Bull: Gabelli Funds Trulicity benchmark
 ADOPTION_RATES = {
     "Bear": 0.08,
     "Base": 0.15,
     "Bull": 0.20
 }
+# Lancet Study (Basu et al., 2019)
 ACCESS_RATES = {
     "Bear": 0.074,
     "Base": 0.074,
@@ -49,6 +53,7 @@ print(f"-> Calculated Annual COGS Per Patient (Base): ${ANNUAL_COGS_BASE:,.2f}")
 # ---------------------------------------------------------
 print("\n[CLINICAL RISK & INTELLECTUAL PROPERTY]")
 
+# below PTRS and SE values taken from Wong et al. Table 2
 CUMULATIVE_PTRS_MAP = {
     "1": (0.196, 0.014),  # Phase 1 Start (Overall POS, SE 0.7% * 2)
     "2": (0.241, 0.018),  # Phase 2 Start (POS 2,APP, SE 0.9% * 2)
@@ -82,7 +87,7 @@ except ValueError:
     print("[!] Invalid entry. Defaulting to 12 years of exclusivity.")
     patent_life_years = 12
 
-POST_LOE_RETENTION = 0.40
+POST_LOE_RETENTION = 0.40 # JAMA Internal Medicine study Lantus proxy
 print(f"-> Generic/Biosimilar Erosion Cliff will trigger in Commercial Year {patent_life_years + 1}.")
 print(f"-> Post-LOE Retention set to {POST_LOE_RETENTION*100:.0f}% (biologic-specific, see code comments for sourcing).")
 
@@ -96,7 +101,6 @@ for stage_key in STAGE_ORDER:
     label = STAGE_LABELS[stage_key]
     print(f"\n--- {label} ---")
     try:
-        # Changed to float to allow fractional inputs (e.g., 2.5 years)
         duration = float(input(f"  Duration of this phase in years: "))
         annual_burn = float(input(f"  Annual Burn Rate during this phase (in Millions USD): ")) * 1e6
         
@@ -118,10 +122,11 @@ print(f"\n-> Total Pre-Launch Pipeline Timeline Constructed: {years_to_launch} Y
 # ---------------------------------------------------------
 # 4. GLOBAL MACRO VALUATION PARAMETERS
 # ---------------------------------------------------------
-POPULATION_CAGR = 0.0147
-WACC = 0.11
+POPULATION_CAGR = 0.0147 # IDF projected 46% increase in global diabetes prevalence by 2050
+WACC = 0.11 # NYU Stern: Biotech sector baseline (9.01%) + 2.00% Kroll Valuation Size Premium
 YEARS = 20
 
+# below is based on the Tendler et al. study
 UPTAKE_CURVE = [
     0.05, 0.335, 0.65, 0.88, 1.00,
     1.00, 1.00, 1.00, 1.00, 1.00,
