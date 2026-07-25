@@ -7,12 +7,12 @@ import io
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="rNPV Valuation Engine", layout="wide")
 st.title("🔬 Oral Insulin: Risk-Adjusted NPV Engine")
-st.markdown("Interactive valuation model featuring MIT BIO stage-gate risk, geographical pricing segmentation, dynamic patent exclusivity, and 10,000-iteration Monte Carlo analysis.")
+st.markdown("Interactive valuation model featuring MIT BIO stage-gate risk (marginal, stage-weighted), "
+            "geographical pricing segmentation, dynamic patent exclusivity, and 10,000-iteration Monte Carlo analysis.")
 
 # --- 2. SIDEBAR (USER INTERFACE) ---
 st.sidebar.header("1. Commercial Parameters")
 target_wac = st.sidebar.slider("Base US WAC Price ($)", min_value=3628, max_value=6000, value=4789, step=10)
-# GTN Rebate controls the universal metric across all 3 scenarios
 gtn_rebate = st.sidebar.slider("US GTN Rebate (%)", min_value=50, max_value=90, value=76, step=1) / 100
 peak_market_share = st.sidebar.slider("Base Global Share (%)", min_value=5, max_value=20, value=15, step=1) / 100
 
@@ -20,14 +20,35 @@ st.sidebar.header("2. Intellectual Property")
 patent_life_years = st.sidebar.slider("Years of Exclusivity", min_value=8, max_value=15, value=12, step=1)
 
 st.sidebar.header("3. Clinical Risk (MIT Data)")
+
+# Cumulative Probability of Technical and Regulatory Success (PTRS), i.e. the
+# probability that an asset which has ALREADY REACHED a given stage will go
+# on to be approved. Source: Wong, Siah & Lo (2019), Biostatistics 20(2),
+# Table 2, Metabolic/Endocrinology-specific cumulative success rates.
+CUMULATIVE_PTRS_MAP = {
+    "1": 0.196,  # Phase 1 Start
+    "2": 0.241,  # Phase 2 Start
+    "3": 0.516,  # Phase 3 Start
+    "4": 0.850   # NDA / Pre-Launch
+}
+STAGE_ORDER = ["1", "2", "3", "4"]
+STAGE_LABELS = {
+    "1": "Phase 1 (Safety)",
+    "2": "Phase 2 (Efficacy)",
+    "3": "Phase 3 (Pivotal/CVOT)",
+    "4": "NDA / Pre-Launch Supply"
+}
+
+# label -> (stage_key, POS) so the UI keeps its friendly labels while the
+# engine gets a stable stage key to compute marginal (stage-transition) weights
 stage_options = {
-    "Phase 1 (19.6% POS)": 0.196,
-    "Phase 2 (24.1% POS)": 0.241,
-    "Phase 3 (51.6% POS)": 0.516,
-    "Pre-Launch (85.0% POS)": 0.850
+    "Phase 1 (19.6% POS)": ("1", CUMULATIVE_PTRS_MAP["1"]),
+    "Phase 2 (24.1% POS)": ("2", CUMULATIVE_PTRS_MAP["2"]),
+    "Phase 3 (51.6% POS)": ("3", CUMULATIVE_PTRS_MAP["3"]),
+    "Pre-Launch (85.0% POS)": ("4", CUMULATIVE_PTRS_MAP["4"])
 }
 stage_selection = st.sidebar.selectbox("Current Clinical Stage", list(stage_options.keys()))
-POS = stage_options[stage_selection]
+current_stage, POS = stage_options[stage_selection]
 
 st.sidebar.header("4. R&D Timeline & Costs")
 st.sidebar.markdown("*(Annual burn rate input)*")
@@ -44,7 +65,27 @@ p4_burn = st.sidebar.number_input("NDA Annual Burn ($M)", value=25.0, step=1.0) 
 YEARS = 20
 POPULATION_CAGR = 0.0147
 WACC = 0.11
-POST_LOE_RETENTION = 0.15
+
+# ---------------------------------------------------------------------------
+# POST_LOE_RETENTION -- REVISED (v2)
+# ---------------------------------------------------------------------------
+# The original 15% assumption was an IQVIA small-molecule generic-erosion
+# benchmark, which is too aggressive for a BIOLOGIC like insulin. Real-world
+# insulin biosimilar data shows much slower, shallower erosion:
+#   - Lantus (insulin glargine) retained ~45-46% of NET SALES as of 2020,
+#     roughly 4-5 years after biosimilar Basaglar's 2016 launch.
+#     Source: JAMA Internal Medicine study, as reported in "Biosimilar
+#     Insulin Glargine Led to Downward Trend in Pricing," Managed
+#     Healthcare Executive (2021).
+#   - Lantus retained 78% of TOTAL PRESCRIPTION VOLUME (TRx) even 6
+#     quarters after Semglee -- the first FDA-designated INTERCHANGEABLE
+#     insulin biosimilar -- launched in 2021.
+#     Source: IQVIA analysis for the Biosimilars Council, "Semglee Launch
+#     Tracking," (2023).
+# 40% is a conservative mid-point between the mature glargine erosion data
+# and a discount for a less-entrenched novel oral entrant. Validate/replace
+# with your preferred citation before publishing.
+POST_LOE_RETENTION = 0.40
 
 # Variables that Swing
 WAC_PRICES = {"Bear": 3628.0, "Base": target_wac, "Bull": 5445.0}
@@ -53,35 +94,35 @@ ADOPTION_RATES = {"Bear": 0.08, "Base": peak_market_share, "Bull": 0.20}
 ACCESS_RATES = {"Bear": 0.074, "Base": 0.074, "Bull": 0.155}
 
 UPTAKE_CURVE = [
-    0.05, 0.335, 0.65, 0.88, 1.00, 
-    1.00, 1.00, 1.00, 1.00, 1.00,  
-    1.00, 1.00, 1.00, 1.00, 1.00,  
-    0.50, 0.25, 0.15, 0.10, 0.05   
+    0.05, 0.335, 0.65, 0.88, 1.00,
+    1.00, 1.00, 1.00, 1.00, 1.00,
+    1.00, 1.00, 1.00, 1.00, 1.00,
+    0.50, 0.25, 0.15, 0.10, 0.05
 ]
 
 @st.cache_data
 def clean_df(df, target_val_name):
     country_col = 'Location' if 'Location' in df.columns else 'Country_Territory'
     if country_col not in df.columns and 'Country' in df.columns: country_col = 'Country'
-        
+
     val_col = 'Value' if 'Value' in df.columns else 'Total'
     if val_col not in df.columns and 'Expenditure' in df.columns: val_col = 'Expenditure'
-        
+
     df = df.rename(columns={country_col: 'Country', val_col: target_val_name})
-    if 'Country' in df.columns: 
+    if 'Country' in df.columns:
         df['Country'] = df['Country'].astype(str).str.strip()
-    
+
     exclusions = [
-        'World', 'Africa', 'Europe', 'Middle East and North Africa', 
-        'North America and Caribbean', 'South and Central America', 
-        'South-East Asia', 'Western Pacific', 'High income', 
+        'World', 'Africa', 'Europe', 'Middle East and North Africa',
+        'North America and Caribbean', 'South and Central America',
+        'South-East Asia', 'Western Pacific', 'High income',
         'Middle income', 'Low income'
     ]
     df = df[~df['Country'].isin(exclusions)]
-        
+
     if df[target_val_name].dtype == object:
         df[target_val_name] = df[target_val_name].astype(str).str.replace(',', '', regex=True)
-        
+
     df[target_val_name] = pd.to_numeric(df[target_val_name], errors='coerce').fillna(0)
     return df[['Country', target_val_name]]
 
@@ -93,88 +134,134 @@ def load_data():
         df_t1_youth = pd.read_csv('People with type 1 diabetes (0-19 y) by Country_Territory.csv')
     except FileNotFoundError:
         return pd.DataFrame({
-            'Country': ['United States of America', 'Rest of World'], 
+            'Country': ['United States of America', 'Rest of World'],
             'T2D_Population': [37256319, 544119737]
         })
-    
+
     df_total = clean_df(df_total, 'Total_Diabetics_20_79')
     df_t1_all = clean_df(df_t1_all, 'Type_1_All_Ages')
     df_t1_youth = clean_df(df_t1_youth, 'Type_1_0_19')
-    
+
     df_total['Total_Diabetics_20_79'] *= 1000
-    
+
     master_df = pd.merge(df_total, df_t1_all, on='Country', how='outer')
     master_df = pd.merge(master_df, df_t1_youth, on='Country', how='outer').fillna(0)
-    
-    master_df['Type_1_Adults'] = (master_df['Type_1_All_Ages'] - master_df['Type_1_0_19']).clip(lower=0) 
-    master_df['T2D_Population'] = (master_df['Total_Diabetics_20_79'] - master_df['Type_1_Adults']).clip(lower=0) 
-    
+
+    master_df['Type_1_Adults'] = (master_df['Type_1_All_Ages'] - master_df['Type_1_0_19']).clip(lower=0)
+    master_df['T2D_Population'] = (master_df['Total_Diabetics_20_79'] - master_df['Type_1_Adults']).clip(lower=0)
+
     return master_df
 
 market_data = load_data()
 
+# Build the R&D burn map WITH each year's phase tagged, so cost years can be
+# individually risk-weighted instead of blanket-weighted.
+clinical_burn_map = []  # list of (stage_key, annual_burn)
+for stage_key, duration, annual_burn in [("1", p1_yrs, p1_burn), ("2", p2_yrs, p2_burn),
+                                          ("3", p3_yrs, p3_burn), ("4", p4_yrs, p4_burn)]:
+    if duration > 0:
+        for _ in range(int(np.ceil(duration))):
+            clinical_burn_map.append((stage_key, annual_burn))
+
+# ---------------------------------------------------------------------------
+# MARGINAL STAGE-WEIGHTING (v2 -- NEW)
+# ---------------------------------------------------------------------------
+def calculate_marginal_weights(current_stage, current_pos, ptrs_map=CUMULATIVE_PTRS_MAP, stage_order=STAGE_ORDER):
+    """
+    Returns the probability, AS OF TODAY, of actually incurring R&D spend in
+    each clinical stage -- as opposed to blanket-applying the terminal
+    cumulative POS to every future R&D dollar.
+
+    Since CUMULATIVE_PTRS_MAP[S] = PTRS(T) x P(reach T | at S) for any later
+    stage T (Wong, Siah & Lo, 2019):
+
+        P(reach T | currently at S) = PTRS(S) / PTRS(T)     for T >= S
+
+    - The CURRENT stage's spend is (approximately) already committed, so its
+      weight is current_pos / ptrs_map[current_stage] ~= 1.0.
+    - A LATER stage's spend is only incurred if every intervening stage-gate
+      is cleared, so its weight = probability of reaching it.
+    - Any ALREADY-COMPLETED stage gets weight 0 (sunk, not forward-risked).
+
+    `current_pos` is passed explicitly (rather than always using the fixed
+    global POS) so Monte Carlo draws that jitter the current stage's POS
+    also consistently jitter the implied R&D risk weights.
+    """
+    weights = {}
+    reached_current = False
+    for stage in stage_order:
+        if stage == current_stage:
+            reached_current = True
+        weights[stage] = (current_pos / ptrs_map[stage]) if reached_current else 0.0
+    return weights
+
 def calculate_rnpv(wac, gtn, cogs_per_pill, share, ptrs, patent_years, access_rate, df, return_logs=False):
     annual_cogs = cogs_per_pill * 365.0
     us_net_price = wac * (1 - gtn)
-    
+
     row_wac = wac * 0.10
-    row_net_price = max(row_wac * 0.80, annual_cogs * 1.15) 
-    
+    row_net_price = max(row_wac * 0.80, annual_cogs * 1.15)
+
     total_rnpv = 0
     current_year = 1
     logs = []
-    
+
+    # v2: marginal, stage-specific risk weighting -- `ptrs` here is the
+    # (possibly Monte-Carlo-jittered) cumulative POS for the CURRENT stage.
+    stage_weights = calculate_marginal_weights(current_stage, ptrs)
+
     if return_logs:
-        logs.append("[1] Processing Clinical Trial Pipeline Cash Flows...")
-        
-    phases = [(p1_yrs, p1_burn), (p2_yrs, p2_burn), (p3_yrs, p3_burn), (p4_yrs, p4_burn)]
-    for duration, annual_burn in phases:
-        if duration > 0:
-            for _ in range(int(np.ceil(duration))):
-                discounted_burn = annual_burn / ((1 + WACC)**current_year)
-                rnpv_burn = discounted_burn * ptrs
-                total_rnpv -= rnpv_burn
-                if return_logs:
-                    logs.append(f"  R&D Yr {current_year:02d} | Capital Burn: ${annual_burn/1e6:5.1f}M | rNPV Impact: ${-rnpv_burn/1e6:7.2f}M")
-                current_year += 1
-                
+        logs.append("[1] Processing Clinical Trial Pipeline Cash Flows (Marginal Stage-Weighted)...")
+
+    for annual_burn_year, (stage_key, annual_burn) in enumerate(clinical_burn_map, 1):
+        discounted_burn = annual_burn / ((1 + WACC) ** current_year)
+        stage_weight = stage_weights[stage_key]
+        rnpv_burn = discounted_burn * stage_weight
+        total_rnpv -= rnpv_burn
+        if return_logs:
+            logs.append(f"  R&D Yr {current_year:02d} | {STAGE_LABELS[stage_key]:26s} | Burn: ${annual_burn/1e6:5.1f}M | "
+                        f"Stage Weight: {stage_weight*100:5.1f}% | rNPV Impact: ${-rnpv_burn/1e6:7.2f}M")
+        current_year += 1
+
     launch_year_offset = current_year
-    
+
     if return_logs:
         logs.append(f"\n[2] Processing {YEARS}-Year Commercialization Window (LOE Cliff at Yr {patent_years + 1})...")
-        
+
     us_base_pool = df[df['Country'] == 'United States of America']['T2D_Population'].sum()
     row_base_pool = df[df['Country'] != 'United States of America']['T2D_Population'].sum()
-    
+
     for yr in range(1, YEARS + 1):
         us_pool = us_base_pool * ((1 + POPULATION_CAGR) ** yr)
         row_pool = row_base_pool * ((1 + POPULATION_CAGR) ** yr)
-        
+
         us_patients = us_pool * access_rate * share * UPTAKE_CURVE[yr-1]
         row_patients = row_pool * access_rate * share * UPTAKE_CURVE[yr-1]
-        
+
         revenue_factor = 1.0 if yr <= patent_years else POST_LOE_RETENTION
-        
+
         gross_revenue = (us_patients * us_net_price + row_patients * row_net_price) * revenue_factor
         total_cogs = (us_patients + row_patients) * annual_cogs * revenue_factor
-        
+
         cash_flow = gross_revenue - total_cogs
-        
+
         discount_factor = (1 + WACC) ** (yr + launch_year_offset - 1)
+        # Commercial cash flow is still weighted by the FULL cumulative POS --
+        # you only ever collect revenue if you clear every stage-gate through
+        # approval, so this term was correct in v1 and is unchanged here.
         rnpv_yr = (cash_flow / discount_factor) * ptrs
         total_rnpv += rnpv_yr
-        
+
         if return_logs and (yr in [1, 5, 10, patent_years, patent_years+1, 15, YEARS]):
-            cliff_note = " <--- [GENERIC CLIFF EXECUTED]" if yr == patent_years + 1 else ""
+            cliff_note = " <--- [GENERIC/BIOSIMILAR CLIFF EXECUTED]" if yr == patent_years + 1 else ""
             rev_str = f"${gross_revenue/1e9:.2f}B" if gross_revenue >= 1e9 else f"${gross_revenue/1e6:.2f}M"
             logs.append(f"  Com. Yr {yr:02d} | Net Revenue: {rev_str:>7} | rNPV: ${rnpv_yr/1e6:7.2f}M{cliff_note}")
-            
+
     if return_logs:
         return total_rnpv, "\n".join(logs)
     return total_rnpv
 
 # --- 4. SCENARIO DASHBOARD ---
-# ALL SCENARIOS now lock GTN and POS uniformly. They only vary across WAC, COGS, Share, and Access.
 bear_rnpv, bear_logs = calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Bear"], ADOPTION_RATES["Bear"], POS, patent_life_years, ACCESS_RATES["Bear"], market_data, return_logs=True)
 base_rnpv, base_logs = calculate_rnpv(WAC_PRICES["Base"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data, return_logs=True)
 bull_rnpv, bull_logs = calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Bull"], ADOPTION_RATES["Bull"], POS, patent_life_years, ACCESS_RATES["Bull"], market_data, return_logs=True)
@@ -217,6 +304,11 @@ st.divider()
 col1, col2 = st.columns(2)
 
 ITERATIONS = 10000
+
+# v2: fixed seed for reproducibility -- an auditable model should give the
+# same 5th/95th percentile bands every time it's re-run on the same inputs.
+np.random.seed(42)
+
 sim_wac = np.random.triangular(WAC_PRICES["Bear"], WAC_PRICES["Base"], WAC_PRICES["Bull"], ITERATIONS)
 sim_gtn = np.random.triangular(0.60, gtn_rebate, 0.90, ITERATIONS)
 sim_share = np.random.triangular(ADOPTION_RATES["Bear"], ADOPTION_RATES["Base"], ADOPTION_RATES["Bull"], ITERATIONS)
@@ -240,7 +332,7 @@ with col1:
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
     st.pyplot(fig)
-    
+
     buf1 = io.BytesIO()
     fig.savefig(buf1, format="png", bbox_inches="tight", dpi=300)
     buf1.seek(0)
@@ -254,24 +346,23 @@ with col1:
 with col2:
     st.subheader("Tornado Analysis: rNPV Sensitivity")
     base_b = base_rnpv / 1e9
-    
-    swing_share = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Bear"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+
+    swing_share = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Bear"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                    calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Bull"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
-    
-    swing_wac = (calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+
+    swing_wac = (calculate_rnpv(WAC_PRICES["Bear"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                  calculate_rnpv(WAC_PRICES["Bull"], gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
-    
-    swing_cogs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bear"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+
+    swing_cogs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bear"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                   calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Bull"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
 
-    swing_access = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+    swing_access = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                     calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Bull"], market_data)/1e9)
-    
-    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], max(0.01, POS - 0.014), patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+
+    swing_ptrs = (calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], max(0.01, POS - 0.014), patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                   calculate_rnpv(target_wac, gtn_rebate, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], min(1.0, POS + 0.014), patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
 
-    # Note: Added GTN to the Tornado to still show its extreme sensitivity weight, even though scenarios fix it at 76%. 
-    swing_gtn = (calculate_rnpv(target_wac, 0.90, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9, 
+    swing_gtn = (calculate_rnpv(target_wac, 0.90, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9,
                  calculate_rnpv(target_wac, 0.60, COGS_PER_PILL["Base"], ADOPTION_RATES["Base"], POS, patent_life_years, ACCESS_RATES["Base"], market_data)/1e9)
 
     swings_dict = {
@@ -282,24 +373,24 @@ with col2:
         'Clinical POS (Min/Max CI)': (swing_ptrs, swing_ptrs[1] - swing_ptrs[0]),
         'US GTN Rebate (90% - 60%)': (swing_gtn, swing_gtn[1] - swing_gtn[0])
     }
-    
+
     sorted_swings = dict(sorted(swings_dict.items(), key=lambda item: item[1][1], reverse=False))
-    
+
     variables = list(sorted_swings.keys())
     mins = [val[0][0] for val in sorted_swings.values()]
     maxs = [val[0][1] for val in sorted_swings.values()]
-    
+
     fig2, ax2 = plt.subplots(figsize=(8, 5))
     for i, (low, high) in enumerate(zip(mins, maxs)):
         ax2.broken_barh([(low, base_b - low)], (i - 0.4, 0.8), facecolors='#E63946')
         ax2.broken_barh([(base_b, high - base_b)], (i - 0.4, 0.8), facecolors='#2A9D8F')
-        
+
     ax2.set_yticks(range(len(variables)))
     ax2.set_yticklabels(variables)
     ax2.axvline(base_b, color='black', linewidth=2)
     ax2.set_xlabel("Asset Valuation ($ Billions)")
     st.pyplot(fig2)
-    
+
     buf2 = io.BytesIO()
     fig2.savefig(buf2, format="png", bbox_inches="tight", dpi=300)
     buf2.seek(0)
@@ -323,7 +414,7 @@ try:
 
     pdf = FPDF()
     pdf.add_page()
-    
+
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(0, 10, "Oral Insulin rNPV - Comprehensive Valuation Report", ln=True, align="C")
     pdf.ln(5)
@@ -335,41 +426,42 @@ try:
     pdf.cell(0, 6, f"US GTN Rebate: {gtn_rebate*100:.0f}%", ln=True)
     pdf.cell(0, 6, f"Peak Global Share: {peak_market_share*100:.0f}%", ln=True)
     pdf.cell(0, 6, f"Clinical Stage: {stage_selection}", ln=True)
+    pdf.cell(0, 6, f"Post-LOE Retention (biologic-adjusted): {POST_LOE_RETENTION*100:.0f}%", ln=True)
     pdf.cell(0, 6, f"Calculated Base Case rNPV: ${base_rnpv/1e9:.3f} Billion", ln=True)
     pdf.ln(5)
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f1, \
          tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f2, \
          tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as fpdf_out:
-         
+
          fig.savefig(f1.name, format="png", bbox_inches="tight")
          fig2.savefig(f2.name, format="png", bbox_inches="tight")
-         
+
          pdf.set_font("Arial", 'B', 12)
          pdf.cell(0, 10, "2. Monte Carlo Distribution:", ln=True)
          pdf.image(f1.name, w=160)
-         
+
          pdf.add_page()
          pdf.cell(0, 10, "3. Tornado Sensitivity Analysis:", ln=True)
          pdf.image(f2.name, w=160)
-         
+
          pdf.add_page()
          pdf.cell(0, 10, "4. Base Case Cash Flow Log:", ln=True)
          pdf.set_font("Courier", '', 8)
-         
+
          for line in base_logs.split('\n'):
              safe_line = line.encode('latin-1', 'replace').decode('latin-1')
              pdf.multi_cell(0, 4, safe_line)
-             
+
          pdf.output(fpdf_out.name)
-         
+
          with open(fpdf_out.name, "rb") as f:
              pdf_bytes = f.read()
-             
+
     os.unlink(f1.name)
     os.unlink(f2.name)
     os.unlink(fpdf_out.name)
-    
+
     st.download_button(
         label="Download Comprehensive PDF Report",
         data=pdf_bytes,
