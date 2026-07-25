@@ -124,7 +124,7 @@ print(f"\n-> Total Pre-Launch Pipeline Timeline Constructed: {years_to_launch} Y
 # ---------------------------------------------------------
 POPULATION_CAGR = 0.0147 # IDF projected 46% increase in global diabetes prevalence by 2050
 WACC = 0.11 # NYU Stern: Biotech sector baseline (9.01%) + 2.00% Kroll Valuation Size Premium
-YEARS = 20
+YEARS = 20 # biopharma industry standard for rNPV modeling
 
 # below is based on the Tendler et al. study
 UPTAKE_CURVE = [
