@@ -147,7 +147,7 @@ def load_data():
         print("\n[!] WARNING: Could not find files. Using dummy global patient data for simulation purposes.")
         return pd.DataFrame({
             'Country': ['United States of America', 'Rest of World'], 
-            'T2D_Population': [30000000, 470000000]
+            'T2D_Population': [37256319, 544119737]
         })
     
     df_total = clean_df(df_total, 'Total_Diabetics_20_79')
