@@ -53,12 +53,12 @@ print(f"-> Calculated Annual COGS Per Patient (Base): ${ANNUAL_COGS_BASE:,.2f}")
 # ---------------------------------------------------------
 print("\n[CLINICAL RISK & INTELLECTUAL PROPERTY]")
 
-# below PTRS and SE values taken from Wong et al. Table 2
+# below PTRS and SE values taken from Wong et al. Table 2 (Phase 1-3) and BIO study Figure 2 (NDA Approval/ Pre-Launch)
 CUMULATIVE_PTRS_MAP = {
     "1": (0.196, 0.014),  # Phase 1 Start (Overall POS, SE 0.7% * 2)
     "2": (0.241, 0.018),  # Phase 2 Start (POS 2,APP, SE 0.9% * 2)
     "3": (0.516, 0.030),  # Phase 3 Start (POS 3,APP, SE 1.5% * 2)
-    "4": (0.850, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
+    "4": (0.869, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
 }
 STAGE_ORDER = ["1", "2", "3", "4"]
 STAGE_LABELS = {
