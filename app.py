@@ -21,11 +21,12 @@ patent_life_years = st.sidebar.slider("Years of Exclusivity", min_value=8, max_v
 
 st.sidebar.header("3. Clinical Risk (MIT Data)")
 
+# Wong et al. Study (Phase 1-3) and BIO study (NDA/ Pre-Launch)
 CUMULATIVE_PTRS_MAP = {
     "1": (0.196, 0.014),  # Phase 1 Start (Overall POS, SE 0.7% * 2)
     "2": (0.241, 0.018),  # Phase 2 Start (POS 2,APP, SE 0.9% * 2)
     "3": (0.516, 0.030),  # Phase 3 Start (POS 3,APP, SE 1.5% * 2)
-    "4": (0.850, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
+    "4": (0.869, 0.020)   # NDA / Pre-Launch (Assigned conservative 2.0% bound)
 }
 STAGE_ORDER = ["1", "2", "3", "4"]
 STAGE_LABELS = {
@@ -39,7 +40,7 @@ stage_options = {
     "Phase 1 (19.6% POS)": ("1", CUMULATIVE_PTRS_MAP["1"][0]),
     "Phase 2 (24.1% POS)": ("2", CUMULATIVE_PTRS_MAP["2"][0]),
     "Phase 3 (51.6% POS)": ("3", CUMULATIVE_PTRS_MAP["3"][0]),
-    "Pre-Launch (85.0% POS)": ("4", CUMULATIVE_PTRS_MAP["4"][0])
+    "Pre-Launch (86.9% POS)": ("4", CUMULATIVE_PTRS_MAP["4"][0])
 }
 stage_selection = st.sidebar.selectbox("Current Clinical Stage", list(stage_options.keys()))
 current_stage, POS = stage_options[stage_selection]
